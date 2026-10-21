@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>UsageMonitor</AssemblyName>
+    <RootNamespace>UsageMonitor</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>Usage Monitor</Product>
+    <Description>A compact Windows widget for Codex and Claude usage.</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/widget.ico</ApplicationIcon>
+    <RuntimeFrameworkVersion Condition="'$(SelfContained)' == 'true'">8.0.32</RuntimeFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../UsageMonitor.Core/UsageMonitor.Core.csproj" />
+    <Resource Include="Assets/widget.ico" />
+  </ItemGroup>
+</Project>
