@@ -89,6 +89,75 @@ internal static class ClaudeResponseParser
         return ReadWindows(report);
     }
 
+    internal static IReadOnlyList<UsageWindow> ReadUsageReport(JsonElement report)
+    {
+        if (report.ValueKind != JsonValueKind.Object || !report.TryGetProperty("rate_limits", out var limits) ||
+            limits.ValueKind != JsonValueKind.Object)
+        {
+            throw new ClaudeConnectionException();
+        }
+
+        if (limits.TryGetProperty("limits", out _))
+        {
+            return ReadWindows(report);
+        }
+
+        var rows = new List<object>();
+        foreach (var (name, kind, model) in new[]
+                 {
+                     ("five_hour", "session", ""), ("seven_day", "weekly_all", ""),
+                     ("seven_day_opus", "weekly_scoped", "Opus"), ("seven_day_sonnet", "weekly_scoped", "Sonnet")
+                 })
+        {
+            if (limits.TryGetProperty(name, out var meter) && meter.ValueKind != JsonValueKind.Null)
+            {
+                AddLegacyMeter(rows, meter, kind, model);
+            }
+        }
+
+        if (limits.TryGetProperty("model_scoped", out var scoped) && scoped.ValueKind != JsonValueKind.Null)
+        {
+            if (scoped.ValueKind != JsonValueKind.Array)
+            {
+                throw new ClaudeConnectionException();
+            }
+
+            foreach (var meter in scoped.EnumerateArray())
+            {
+                if (meter.ValueKind != JsonValueKind.Object || CodexResponseParser.ReadString(meter, "display_name").Length == 0)
+                {
+                    continue;
+                }
+
+                AddLegacyMeter(rows, meter, "weekly_scoped", CodexResponseParser.ReadString(meter, "display_name"));
+            }
+        }
+
+        if (rows.Count == 0)
+        {
+            throw new ClaudeConnectionException();
+        }
+
+        return ReadWindows(JsonSerializer.SerializeToElement(new { rate_limits = new { limits = rows } }));
+    }
+
+    private static void AddLegacyMeter(List<object> rows, JsonElement meter, string kind, string model)
+    {
+        if (meter.ValueKind != JsonValueKind.Object || !meter.TryGetProperty("utilization", out var utilization) ||
+            utilization.ValueKind != JsonValueKind.Number || !utilization.TryGetDouble(out var used) || !double.IsFinite(used))
+        {
+            return;
+        }
+
+        rows.Add(new
+        {
+            kind,
+            percent = used,
+            resets_at = CodexResponseParser.ReadString(meter, "resets_at"),
+            scope = new { model = new { display_name = model } }
+        });
+    }
+
     internal static IReadOnlyList<UsageWindow> ReadWindows(JsonElement report)
     {
         if (report.ValueKind != JsonValueKind.Object ||

@@ -19,7 +19,7 @@ Codex CLI가 이미 설치되어 있으면 실행 파일과 로그인 상태를 
 
 Claude는 [Claude Code](https://code.claude.com/docs/en/setup) **2.1.273 이상**의 native `claude.exe`를 재사용합니다. PATH·사용자 설치·WinGet 설치를 탐색하며, 설정에서 **Claude 실행 파일 선택**으로 지정할 수도 있습니다. 기존 Claude Code 로그인을 자동 감지합니다. 새 로그인은 **설정 → Claude에서 로그인**을 누르면 열리는 공식 Claude 로그인 창에서 진행합니다. 로그인 창을 마치면 위젯이 자동으로 다시 확인합니다. 구독 계정의 Claude Code 로그인이 필요하며 API 키·setup-token 인증은 구독 한도 조회에 사용하지 않습니다.
 
-Claude 사용량은 공식 CLI의 내장 `/usage` 명령에서 읽습니다. 조회 시 safe mode·MCP 비활성화·세션 저장 비활성화를 적용하고 모델 대화를 보내지 않습니다. CLI가 토큰을 관리하며 위젯은 Claude 자격 증명 파일을 읽거나 복사하지 않습니다. 이 구조에는 별도 Node.js 설치가 필요하지 않습니다.
+Claude 사용량은 공식 native CLI의 제어 요청 `get_usage`로 읽습니다. `skip_behaviors: true`로 최근 7일의 대화 기록을 훑는 행동 분석을 건너뛰고 사용 한도만 조회합니다. safe mode·MCP 비활성화·세션 저장 비활성화를 적용하며 사용자 메시지나 모델 턴을 보내지 않습니다. CLI가 토큰을 관리하며 위젯은 Claude 자격 증명 파일을 읽거나 복사하지 않습니다. 이 구조에는 별도 Node.js 설치가 필요하지 않습니다.
 
 ## 작은 창 사용하기
 
@@ -67,6 +67,6 @@ dotnet run --project src/UsageMonitor
 dotnet run --project src/UsageMonitor -- --preview=dual
 ```
 
-`UsageMonitor.Core/IUsageProvider`는 계정 조회·사용량 조회·로그인·취소 계약입니다. Codex 구현은 newline JSON RPC로 공식 [Codex App Server](https://developers.openai.com/codex/app-server)의 계정 API만 사용하고 모델 턴을 생성하지 않습니다. Claude 구현은 공식 CLI의 `auth status`와 `/usage`를 호출하고 조회 전후 계정이 같은지 확인합니다. `/usage` 구조화 출력은 [공식 SDK 변경 기록](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)의 0.3.273부터 지원되며 아직 실험적 형식이므로 변경 시 오류를 표시하고 마지막 값을 유지합니다. 새 서비스는 제공자 구현과 `UsageProviderCatalog` 등록을 추가하는 방식으로 확장합니다.
+`UsageMonitor.Core/IUsageProvider`는 계정 조회·사용량 조회·로그인·취소 계약입니다. Codex 구현은 newline JSON RPC로 공식 [Codex App Server](https://developers.openai.com/codex/app-server)의 계정 API만 사용하고 모델 턴을 생성하지 않습니다. Claude 구현은 공식 CLI의 `auth status`와 stream-json 제어 요청 `initialize`·`get_usage`를 사용하고 조회 전후 계정이 같은지 확인합니다. [공식 SDK 배포 타입](https://unpkg.com/@anthropic-ai/claude-agent-sdk@0.3.273/sdk.d.ts)에 따라 `skip_behaviors: true`를 지정하고 사용자 메시지는 전송하지 않습니다. 한도 응답은 `rate_limits.limits` 형식과 기존 `five_hour`·`seven_day`·모델별 형식을 지원하며, 두 형식이 함께 있으면 `limits`를 우선합니다. CLI 구조화 응답은 변경될 수 있으므로 읽을 수 없으면 오류를 표시하고 마지막 값을 유지합니다. 새 서비스는 제공자 구현과 `UsageProviderCatalog` 등록을 추가하는 방식으로 확장합니다.
 
 Core·Services·Presentation 검증은 외부 테스트 패키지가 필요 없는 실행형 테스트입니다. Presentation 검증은 데스크톱 입력 없이 WPF 컨트롤의 편집 이벤트와 렌더링을 검사하며 `artifacts/layout-smoke`에 PNG를 만듭니다. 실제 브라우저 신규 로그인은 사용자가 직접 완료해야 하며, 테스트 과정에서 기존 계정을 로그아웃하거나 바꾸지 않습니다.

@@ -43,19 +43,12 @@ public sealed class ClaudeUsageProvider : IUsageProvider
                     return CreateSnapshot(authentication.Account, []);
                 }
 
-                var result = await transport.RunAsync([
-                    "--safe-mode", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}",
-                    "--no-session-persistence", "--print", "--output-format", "stream-json", "--verbose", "/usage"
-                ], ct).ConfigureAwait(false);
-                if (result.ExitCode != 0)
-                {
-                    throw new ClaudeConnectionException();
-                }
+                var report = await transport.ReadUsageAsync(ct).ConfigureAwait(false);
 
                 var verified = await ReadAuthenticationAsync(ct).ConfigureAwait(false);
                 if (authentication.Identity == verified.Identity)
                 {
-                    return CreateSnapshot(authentication.Account, ClaudeResponseParser.ReadStream(result.Output));
+                    return CreateSnapshot(authentication.Account, ClaudeResponseParser.ReadUsageReport(report));
                 }
             }
 

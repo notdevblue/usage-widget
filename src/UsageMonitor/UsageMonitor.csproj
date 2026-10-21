@@ -7,7 +7,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>UsageMonitor</AssemblyName>
     <RootNamespace>UsageMonitor</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>Usage Monitor</Product>
     <Description>A compact Windows widget for Codex and Claude usage.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
