@@ -29,6 +29,7 @@ public sealed record AppSettings
 {
     public bool AlwaysOnTop { get; init; }
     public FiveHourDisplay FiveHourDisplay { get; init; } = FiveHourDisplay.Automatic;
+    public bool ShowResetCountdown { get; init; }
     public WidgetTheme Theme { get; init; } = WidgetTheme.System;
     public ThemeColors CustomColors { get; init; } = new();
     public double Scale { get; init; } = 1;

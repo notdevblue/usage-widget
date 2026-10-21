@@ -18,6 +18,7 @@ public sealed class SettingsWindow : Window
     private readonly Func<LayoutContext> getContext;
     private readonly CheckBox pinOption = new();
     private readonly ComboBox fiveHourOption = new();
+    private readonly CheckBox resetCountdownOption = new();
     private readonly ComboBox themeOption = new();
     private readonly Slider scaleOption = new();
     private readonly Slider opacityOption = new();
@@ -184,6 +185,12 @@ public sealed class SettingsWindow : Window
                 Publish(settings with { FiveHourDisplay = (FiveHourDisplay)fiveHourOption.SelectedIndex });
         };
         section.Children.Add(Row("5시간 한도", fiveHourOption));
+        resetCountdownOption.Content = "초기화까지 남은 시간 표시";
+        resetCountdownOption.Margin = new Thickness(0, 0, 0, 12);
+        resetCountdownOption.Checked += (_, _) => ChangeResetCountdown();
+        resetCountdownOption.Unchecked += (_, _) => ChangeResetCountdown();
+        AutomationProperties.SetName(resetCountdownOption, "초기화까지 남은 시간 표시");
+        section.Children.Add(resetCountdownOption);
         ConfigureSlider(scaleOption, 80, 150, "위젯 크기");
         ConfigureSlider(opacityOption, 60, 100, "위젯 불투명도");
         scaleOption.ValueChanged += (_, e) =>
@@ -329,11 +336,18 @@ public sealed class SettingsWindow : Window
         RefreshControls();
     }
 
+    private void ChangeResetCountdown()
+    {
+        if (!synchronizing)
+            Publish(settings with { ShowResetCountdown = resetCountdownOption.IsChecked == true });
+    }
+
     private void RefreshControls()
     {
         synchronizing = true;
         pinOption.IsChecked = settings.AlwaysOnTop;
         fiveHourOption.SelectedIndex = (int)settings.FiveHourDisplay;
+        resetCountdownOption.IsChecked = settings.ShowResetCountdown;
         themeOption.SelectedIndex = (int)settings.Theme;
         scaleOption.Value = settings.Scale * 100;
         opacityOption.Value = settings.Opacity * 100;

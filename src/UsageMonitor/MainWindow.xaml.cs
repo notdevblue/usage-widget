@@ -137,6 +137,7 @@ public partial class MainWindow : Window
             _settings = _settings with
             {
                 AlwaysOnTop = value.AlwaysOnTop, FiveHourDisplay = value.FiveHourDisplay,
+                ShowResetCountdown = value.ShowResetCountdown,
                 Theme = value.Theme, CustomColors = value.CustomColors, Scale = value.Scale,
                 Opacity = value.Opacity, Layout = value.Layout
             };
@@ -356,6 +357,7 @@ public partial class MainWindow : Window
         foreach (var runtime in _providers)
         {
             var view = runtime.View;
+            view.ShowResetCountdown = _settings.ShowResetCountdown;
             var allMetrics = VisibleWindows(runtime).Select(window => new UsageMetric(window, DateTimeOffset.Now,
                 BrushResource("AccentBrush"), BrushResource("WarningBrush"), BrushResource("ErrorBrush"))).ToArray();
             var limits = allMetrics.Length > 0

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using UsageMonitor.Core;
@@ -218,6 +219,22 @@ public sealed class WidgetViewModel : DependencyObject
         set => SetValue(HoverTextProperty, value);
     }
 
+    public bool ShowResetCountdown { get; set; }
+
+    public static readonly DependencyProperty ResetSummaryProperty = DependencyProperty.Register(nameof(ResetSummary), typeof(string), typeof(WidgetViewModel), new PropertyMetadata(""));
+    public string ResetSummary
+    {
+        get => (string)GetValue(ResetSummaryProperty);
+        set => SetValue(ResetSummaryProperty, value);
+    }
+
+    public static readonly DependencyProperty ResetCountdownVisibleProperty = DependencyProperty.Register(nameof(ResetCountdownVisible), typeof(bool), typeof(WidgetViewModel), new PropertyMetadata(false));
+    public bool ResetCountdownVisible
+    {
+        get => (bool)GetValue(ResetCountdownVisibleProperty);
+        set => SetValue(ResetCountdownVisibleProperty, value);
+    }
+
     public void Update()
     {
         UsageVisible = !SettingsOpen;
@@ -225,6 +242,8 @@ public sealed class WidgetViewModel : DependencyObject
         HasMetrics = Metrics.Count > 0;
         EmptyVisible = !HasMetrics;
         DetailVisible = Detail.Length > 0;
+        ResetSummary = HasMetrics ? "초기화 · " + string.Join(" · ", Metrics.Select(metric => $"{metric.Label} {metric.ResetCountdown}")) : "";
+        ResetCountdownVisible = ShowResetCountdown && HasMetrics;
     }
 }
 
@@ -235,6 +254,7 @@ public sealed class UsageMetric
     public string Percentage => $"{Amount}%";
     public double Remaining { get; }
     public string Reset { get; }
+    public string ResetCountdown { get; }
     public string ResetDetail { get; }
     public Brush Accent { get; }
 
@@ -248,6 +268,7 @@ public sealed class UsageMetric
             ? "초기화 시간이 제공되지 않았어요."
             : window.ResetsAt.ToLocalTime().ToString("yyyy.MM.dd (ddd) HH:mm:ss '초기화'");
         Reset = FormatReset(window.ResetsAt, now);
+        ResetCountdown = FormatReset(window.ResetsAt, now, true);
     }
 
     private static Brush CreateAccent(double remaining, Brush normal, Brush warning, Brush error)
@@ -273,17 +294,18 @@ public sealed class UsageMetric
 
     private static byte BlendChannel(byte first, byte second, double amount) => (byte)Math.Round(first + (second - first) * amount);
 
-    private static string FormatReset(DateTimeOffset resetsAt, DateTimeOffset now)
+    private static string FormatReset(DateTimeOffset resetsAt, DateTimeOffset now, bool compact = false)
     {
         if (resetsAt == DateTimeOffset.MinValue)
-            return "초기화 시간 미제공";
+            return compact ? "미제공" : "초기화 시간 미제공";
         var remaining = resetsAt - now;
         if (remaining <= TimeSpan.Zero)
-            return "초기화 확인 중";
+            return compact ? "확인 중" : "초기화 확인 중";
         if (remaining.TotalDays >= 1)
-            return $"{(int)remaining.TotalDays}일 {remaining.Hours}시간 뒤 초기화";
+            return compact ? $"{(int)remaining.TotalDays}d {remaining.Hours}h" : $"{(int)remaining.TotalDays}일 {remaining.Hours}시간 뒤 초기화";
         if (remaining.TotalHours >= 1)
-            return $"{(int)remaining.TotalHours}시간 {remaining.Minutes}분 뒤 초기화";
-        return $"{Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes))}분 뒤 초기화";
+            return compact ? $"{(int)remaining.TotalHours}h {remaining.Minutes}m" : $"{(int)remaining.TotalHours}시간 {remaining.Minutes}분 뒤 초기화";
+        var minutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
+        return compact ? $"{minutes}m" : $"{minutes}분 뒤 초기화";
     }
 }
