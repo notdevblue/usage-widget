@@ -27,7 +27,27 @@ internal static class ProviderRuntimeTests
         RetiredGenerationCannotPublish(true);
         MissingCustomQuotaKeepsStatusRow();
         ClaudeSummaryKeepsModelDetails();
+        CachedUsagePreservesStatus();
         Console.WriteLine($"PASS {assertions} provider runtime assertions");
+    }
+
+    private static void CachedUsagePreservesStatus()
+    {
+        using var fixture = new Fixture();
+        var snapshot = Snapshot("claude", 34) with
+        {
+            ObservedAt = DateTimeOffset.UtcNow.AddMinutes(-20), IsCached = true, IsStale = true,
+            StatusDetail = "서버 재조회: 16:30 이후"
+        };
+        fixture.Install("claude", new("claude", _ => Task.FromResult(snapshot)));
+        var runtime = fixture.Runtime("claude");
+        PumpTask(fixture.InvokeTask("RefreshProviderAsync", runtime));
+        Check(View(runtime).Stale && View(runtime).Metrics.Single().Amount == "34", "Cached fallback must retain its warning state and values.");
+        Check(View(runtime).Status.Contains("20분 전") && View(runtime).Detail == snapshot.StatusDetail, "Cached fallback must retain its actual age and retry detail.");
+        snapshot = snapshot with { Windows = [], ObservedAt = DateTimeOffset.MinValue };
+        PumpTask(fixture.InvokeTask("RefreshProviderAsync", runtime));
+        Check(View(runtime).EmptyTitle == "사용량 조회 대기", "Cooldown without cached meters must not claim the account lacks quotas.");
+        Check(View(runtime).Status.Contains("갱신 시각 미확인"), "Unknown freshness must not be shown as a recent sync.");
     }
 
     private static void SlowProviderDoesNotDelayAnother()

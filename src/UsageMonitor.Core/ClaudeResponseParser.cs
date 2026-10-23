@@ -40,7 +40,7 @@ internal static class ClaudeResponseParser
             {
                 method, email, plan, CodexResponseParser.ReadString(root, "orgId")
             });
-            return new(account, identity);
+            return new(account, identity, CodexResponseParser.ReadString(root, "orgId"));
         }
         catch (JsonException)
         {
@@ -233,4 +233,4 @@ internal static class ClaudeResponseParser
     }
 }
 
-internal sealed record ClaudeAuthentication(UsageAccount Account, string Identity);
+internal sealed record ClaudeAuthentication(UsageAccount Account, string Identity, string OrganizationId = "");

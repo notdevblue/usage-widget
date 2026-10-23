@@ -216,8 +216,8 @@ public partial class MainWindow : Window
             runtime.Snapshot = snapshot;
             runtime.HasSnapshot = true;
             runtime.Failures = 0;
-            runtime.View.Stale = false;
-            runtime.View.Detail = "";
+            runtime.View.Stale = snapshot.IsStale;
+            runtime.View.Detail = snapshot.StatusDetail;
             RenderSnapshots();
         }
         catch (Exception exception)
@@ -247,7 +247,7 @@ public partial class MainWindow : Window
     }
 
     private TimeSpan NextDelay(ProviderRuntime runtime) => _schedule.NextDelay(IsVisible, runtime.Failures,
-        runtime.Snapshot.Windows.Select(window => window.ResetsAt).ToArray(), DateTimeOffset.UtcNow);
+        runtime.Snapshot.Windows.Select(window => window.ResetsAt).ToArray(), DateTimeOffset.UtcNow, _settings.RefreshSeconds);
 
     private void RescheduleProviders()
     {
@@ -323,17 +323,19 @@ public partial class MainWindow : Window
         view.Account = account.Email.Length > 0 ? account.Email : connected ? $"연결된 {runtime.Name} 계정" : "연결된 계정 없음";
         view.RuntimeMissing = false;
         view.ActionText = runtime.Id == "claude" ? "Claude에서 로그인" : connected ? "다른 계정으로 로그인" : "ChatGPT로 로그인";
-        view.EmptyTitle = account.Kind switch
+        view.EmptyTitle = connected && runtime.Snapshot.IsStale && runtime.Snapshot.Windows.Count == 0 ? "사용량 조회 대기" : account.Kind switch
         {
             AccountKind.SignedOut => "로그인 필요",
             AccountKind.ApiKey or AccountKind.Other => "구독 로그인 필요",
             _ => "한도 미제공"
         };
-        view.EmptyBody = connected && runtime.Snapshot.Windows.Count > 0 ? "설정에서 5시간 한도를 켜주세요."
+        view.EmptyBody = connected && runtime.Snapshot.IsStale && runtime.Snapshot.Windows.Count == 0 ? runtime.Snapshot.StatusDetail
+            : connected && runtime.Snapshot.Windows.Count > 0 ? "설정에서 5시간 한도를 켜주세요."
             : connected ? "계정에서 한도를 제공하지 않았어요."
             : $"트레이 아이콘 → 설정에서 {runtime.Name} 구독 계정을 연결해주세요.";
-        view.Status = view.Stale ? $"{FormatAge(runtime.Snapshot)} 수신 · 연결 지연"
+        view.Status = view.Stale ? $"{FormatAge(runtime.Snapshot)} · 마지막 값 / 조회 대기"
             : _preview ? "미리보기 · 실제 사용량이 아니에요"
+            : runtime.Snapshot.IsCached ? $"{FormatAge(runtime.Snapshot)} 갱신 · 로컬 캐시"
             : connected ? $"{FormatAge(runtime.Snapshot)} 동기화" : "계정 연결 대기 중";
         view.StatusBrush = BrushResource(view.Stale ? "WarningBrush" : "AccentBrush");
     }
@@ -637,7 +639,7 @@ public partial class MainWindow : Window
         WindowState = WindowState.Normal;
         Activate();
         ClampToScreen();
-        _ = RefreshAsync();
+        _ = RefreshAsync(false);
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -700,7 +702,7 @@ public partial class MainWindow : Window
     private void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
         if (e.Mode == PowerModes.Resume)
-            Dispatcher.BeginInvoke(() => _ = RefreshAsync());
+            Dispatcher.BeginInvoke(() => _ = RefreshAsync(false));
     }
 
     private bool OpenUrl(string url, ProviderRuntime runtime)
@@ -716,6 +718,8 @@ public partial class MainWindow : Window
 
     private static string FormatAge(UsageSnapshot snapshot)
     {
+        if (snapshot.ObservedAt == DateTimeOffset.MinValue)
+            return "갱신 시각 미확인";
         var age = DateTimeOffset.Now - snapshot.ObservedAt;
         return age.TotalMinutes < 1 ? "방금" : age.TotalHours < 1 ? $"{(int)age.TotalMinutes}분 전" : $"{(int)age.TotalHours}시간 전";
     }

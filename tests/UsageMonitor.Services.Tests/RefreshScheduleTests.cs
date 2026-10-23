@@ -7,6 +7,9 @@ internal static class RefreshScheduleTests
         var schedule = new RefreshSchedule();
         var now = new DateTimeOffset(2026, 10, 20, 15, 0, 0, TimeSpan.FromHours(9));
         assert(schedule.NextDelay(true, 0, [], now) == TimeSpan.FromSeconds(60), "Visible widgets must poll normally every minute.");
+        assert(schedule.NextDelay(true, 0, [], now, 300) == TimeSpan.FromMinutes(5), "Configured refresh intervals must be applied.");
+        assert(schedule.NextDelay(false, 0, [], now, 300) == TimeSpan.FromMinutes(15), "Hidden widgets must respect the configured interval.");
+        assert(schedule.NextDelay(true, 1, [], now, 600) >= TimeSpan.FromMinutes(10), "Failures must not shorten the configured interval.");
         assert(schedule.NextDelay(false, 0, [], now) == TimeSpan.FromSeconds(180), "Hidden widgets must poll normally every three minutes.");
         assert(schedule.NextDelay(true, -1, [], now) == TimeSpan.FromSeconds(60), "Negative failure counts must recover normal scheduling.");
         assert(schedule.NextDelay(false, int.MinValue, [], now) == TimeSpan.FromSeconds(180), "Extreme negative failure counts must remain safe.");

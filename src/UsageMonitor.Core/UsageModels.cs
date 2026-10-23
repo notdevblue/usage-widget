@@ -34,6 +34,9 @@ public sealed record UsageSnapshot
     public UsageAccount Account { get; init; } = new();
     public IReadOnlyList<UsageWindow> Windows { get; init; } = [];
     public DateTimeOffset ObservedAt { get; init; } = DateTimeOffset.MinValue;
+    public bool IsCached { get; init; }
+    public bool IsStale { get; init; }
+    public string StatusDetail { get; init; } = "";
 }
 
 public sealed record LoginAttempt

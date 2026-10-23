@@ -26,7 +26,18 @@ internal static class ClaudeTests
         ("Claude old CLI cannot run usage as a model prompt", OldVersionAsync),
         ("Claude errors hide raw stderr", ProcessExitAsync),
         ("Claude cancellation and disposal terminate owned process", CancellationAsync),
-        ("Claude timeout and output bounds terminate owned process", TimeoutAsync)
+        ("Claude timeout and output bounds terminate owned process", TimeoutAsync),
+        ("Claude fresh cache avoids server reads and preserves observation time", FreshCacheAsync),
+        ("Claude cache rejects mismatched accounts and invalid timestamps", CacheValidationAsync),
+        ("Claude fallback keeps age and persists cooldown across restarts", CachedReportAsync),
+        ("Claude failed reads increase the persistent backoff", RefreshBackoffAsync),
+        ("Claude new cache is readable during server cooldown", CacheDuringCooldownAsync),
+        ("Claude failed state persistence prevents server requests", StateWriteFailureAsync),
+        ("Claude restart without cache keeps the server cooldown", RestartWithoutCacheAsync),
+        ("Claude successful reads honor the interval after cache deletion", SuccessIntervalAsync),
+        ("Claude account switch rejects a fresh cache from the old account", CachedAccountSwitchAsync),
+        ("Claude confirmed refresh clears a previous failure", RecoveryAsync),
+        ("Claude corrupt cooldown files do not permit immediate server reads", CorruptStateAsync)
     ];
 
     private static Task ServerMetersAsync()
@@ -155,7 +166,7 @@ internal static class ClaudeTests
     private static async Task ProviderReadAsync()
     {
         using var scenario = new Scenario("weekly");
-        await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+        await using var provider = scenario.CreateProvider();
         var snapshot = await provider.ReadAsync();
         Equal("claude", snapshot.ProviderId);
         Equal(AccountKind.Claude, snapshot.Account.Kind);
@@ -181,7 +192,7 @@ internal static class ClaudeTests
         foreach (var name in new[] { "noisy", "legacy" })
         {
             using var scenario = new Scenario(name);
-            await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+            await using var provider = scenario.CreateProvider();
             var snapshot = await provider.ReadAsync();
             Equal(20d, snapshot.Windows.Single().UsedPercent);
             Equal("claude:weekly_all::", snapshot.Windows.Single().Id);
@@ -193,7 +204,7 @@ internal static class ClaudeTests
         foreach (var name in new[] { "rejected-init", "rejected-usage" })
         {
             using var scenario = new Scenario(name);
-            await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+            await using var provider = scenario.CreateProvider();
             var error = await ThrowsAsync<ClaudeConnectionException>(() => provider.ReadAsync().WaitAsync(TimeSpan.FromSeconds(5)));
             True(!error.ToString().Contains("secret", StringComparison.OrdinalIgnoreCase));
         }
@@ -204,7 +215,7 @@ internal static class ClaudeTests
         foreach (var name in new[] { "assistant-frame", "result-frame" })
         {
             using var scenario = new Scenario(name);
-            await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+            await using var provider = scenario.CreateProvider();
             var error = await ThrowsAsync<ClaudeConnectionException>(() => provider.ReadAsync());
             True(!error.ToString().Contains("secret", StringComparison.OrdinalIgnoreCase));
         }
@@ -215,7 +226,7 @@ internal static class ClaudeTests
         foreach (var name in new[] { "missing-report", "null-report", "malformed-report" })
         {
             using var scenario = new Scenario(name);
-            await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+            await using var provider = scenario.CreateProvider();
             await ThrowsAsync<ClaudeConnectionException>(() => provider.ReadAsync());
         }
     }
@@ -223,7 +234,7 @@ internal static class ClaudeTests
     private static async Task SuccessfulShutdownAsync()
     {
         using var scenario = new Scenario("hang-after-report");
-        await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+        await using var provider = scenario.CreateProvider();
         var snapshot = await provider.ReadAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Equal(20d, snapshot.Windows.Single().UsedPercent);
         True(File.Exists(scenario.Path + ".eof"));
@@ -233,7 +244,7 @@ internal static class ClaudeTests
     private static async Task TrailingOutputAsync()
     {
         using var scenario = new Scenario("trailing-output");
-        await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+        await using var provider = scenario.CreateProvider();
         var snapshot = await provider.ReadAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Equal(20d, snapshot.Windows.Single().UsedPercent);
         True(File.Exists(scenario.Path + ".eof-complete"));
@@ -244,7 +255,7 @@ internal static class ClaudeTests
         foreach (var name in new[] { "signedout", "apikey", "setup-token" })
         {
             using var scenario = new Scenario(name);
-            await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+            await using var provider = scenario.CreateProvider();
             var snapshot = await provider.ReadAsync();
             Equal(0, snapshot.Windows.Count);
             Equal(name switch
@@ -261,7 +272,7 @@ internal static class ClaudeTests
     private static async Task AccountSwitchAsync()
     {
         using var scenario = new Scenario("switch");
-        await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+        await using var provider = scenario.CreateProvider();
         Equal(20d, (await provider.ReadAsync()).Windows.Single().UsedPercent);
         Equal("4", await File.ReadAllTextAsync(scenario.Path));
     }
@@ -269,7 +280,7 @@ internal static class ClaudeTests
     private static async Task OldVersionAsync()
     {
         using var scenario = new Scenario("old-version");
-        await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+        await using var provider = scenario.CreateProvider();
         var error = await ThrowsAsync<ClaudeConnectionException>(() => provider.ReadAsync());
         True(error.Message.Contains("2.1.273", StringComparison.Ordinal));
         Equal(1, (await File.ReadAllLinesAsync(scenario.Path + ".commands")).Length);
@@ -278,7 +289,7 @@ internal static class ClaudeTests
     private static async Task ProcessExitAsync()
     {
         using var scenario = new Scenario("exit");
-        await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+        await using var provider = scenario.CreateProvider();
         var error = await ThrowsAsync<ClaudeConnectionException>(() => provider.ReadAsync());
         True(!error.ToString().Contains("secret", StringComparison.OrdinalIgnoreCase));
     }
@@ -288,7 +299,7 @@ internal static class ClaudeTests
         foreach (var dispose in new[] { false, true })
         {
             using var scenario = new Scenario("hang");
-            var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+            var provider = scenario.CreateProvider();
             using var cancellation = new CancellationTokenSource();
             try
             {
@@ -317,7 +328,7 @@ internal static class ClaudeTests
     {
         using (var scenario = new Scenario("hang"))
         {
-            await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "", TimeSpan.FromSeconds(1));
+            await using var provider = scenario.CreateProvider(TimeSpan.FromSeconds(1));
             var pending = provider.ReadAsync();
             var pid = await scenario.ReadPidAsync();
             await ThrowsAsync<TimeoutException>(async () => await pending);
@@ -326,9 +337,194 @@ internal static class ClaudeTests
 
         using (var scenario = new Scenario("overflow"))
         {
-            await using var provider = new ClaudeUsageProvider(Environment.ProcessPath ?? "");
+            await using var provider = scenario.CreateProvider();
             await ThrowsAsync<ClaudeConnectionException>(() => provider.ReadAsync());
         }
+    }
+
+    private static async Task FreshCacheAsync()
+    {
+        using var scenario = new Scenario("weekly");
+        var now = DateTimeOffset.UtcNow;
+        scenario.WriteCache(now.AddMinutes(-2));
+        await using var provider = scenario.CreateProvider();
+        var snapshot = await provider.ReadAsync();
+        Equal(17d, snapshot.Windows.Single().UsedPercent);
+        Equal(now.AddMinutes(-2).ToUnixTimeMilliseconds(), snapshot.ObservedAt.ToUnixTimeMilliseconds());
+        True(snapshot.IsCached && !snapshot.IsStale);
+        True(!File.Exists(scenario.Path + ".requests"));
+    }
+
+    private static Task CacheValidationAsync()
+    {
+        using var scenario = new Scenario("weekly");
+        var now = DateTimeOffset.UtcNow;
+        var authentication = ClaudeResponseParser.ReadAuthentication("""
+            {"loggedIn":true,"authMethod":"claude.ai","email":"test@example.invalid","orgId":"old-org","subscriptionType":"team"}
+            """);
+        var cache = new ClaudeUsageCache(scenario.Path + ".cache");
+        foreach (var mutation in new[] { "account", "organization", "email", "future", "timestamp", "malformed" })
+        {
+            scenario.WriteCache(mutation == "future" ? now.AddHours(1) : now.AddMinutes(-1));
+            var path = scenario.Path + ".cache";
+            var json = File.ReadAllText(path);
+            json = mutation switch
+            {
+                "account" => json.Replace("\"accountUuid\":\"account-id\",\"fetchedAtMs\"", "\"accountUuid\":\"other-id\",\"fetchedAtMs\""),
+                "organization" => json.Replace("old-org", "other-org"),
+                "email" => json.Replace("test@example.invalid", "other@example.invalid"),
+                "timestamp" => json.Replace(now.AddMinutes(-1).ToUnixTimeMilliseconds().ToString(), "9223372036854775807"),
+                "malformed" => "{",
+                _ => json
+            };
+            File.WriteAllText(path, json);
+            True(!cache.TryGet(authentication, now, out _));
+        }
+        return Task.CompletedTask;
+    }
+
+    private static async Task CachedReportAsync()
+    {
+        using var scenario = new Scenario("cached-report");
+        var clock = new TestClock(DateTimeOffset.UtcNow);
+        var observed = clock.GetUtcNow().AddMinutes(-20);
+        scenario.WriteCache(observed);
+        await using (var provider = scenario.CreateProvider(clock: clock))
+        {
+            var first = await provider.ReadAsync();
+            True(first.IsStale);
+            Equal(observed.ToUnixTimeMilliseconds(), first.ObservedAt.ToUnixTimeMilliseconds());
+            Equal(17d, first.Windows.Single().UsedPercent);
+            await provider.ReadAsync();
+        }
+        await using (var restarted = scenario.CreateProvider(clock: clock))
+        {
+            var snapshot = await restarted.ReadAsync();
+            Equal(observed.ToUnixTimeMilliseconds(), snapshot.ObservedAt.ToUnixTimeMilliseconds());
+        }
+        Equal(2, (await File.ReadAllLinesAsync(scenario.Path + ".requests")).Length);
+        clock.Advance(TimeSpan.FromMinutes(31));
+        await using (var provider = scenario.CreateProvider(clock: clock))
+            await provider.ReadAsync();
+        var state = scenario.ReadRefreshState();
+        Equal(2, state.Failures);
+        Equal(clock.GetUtcNow().AddHours(1), state.NextAttemptAt);
+    }
+
+    private static async Task RefreshBackoffAsync()
+    {
+        using var scenario = new Scenario("rejected-usage");
+        var clock = new TestClock(DateTimeOffset.UtcNow);
+        scenario.WriteCache(clock.GetUtcNow().AddMinutes(-20));
+        await using var provider = scenario.CreateProvider(clock: clock);
+        True((await provider.ReadAsync()).IsStale);
+        Equal(1, scenario.ReadRefreshState().Failures);
+        Equal(clock.GetUtcNow().AddMinutes(30), scenario.ReadRefreshState().NextAttemptAt);
+        clock.Advance(TimeSpan.FromMinutes(29));
+        await provider.ReadAsync();
+        Equal(2, (await File.ReadAllLinesAsync(scenario.Path + ".requests")).Length);
+        clock.Advance(TimeSpan.FromMinutes(2));
+        await provider.ReadAsync();
+        Equal(2, scenario.ReadRefreshState().Failures);
+        Equal(clock.GetUtcNow().AddHours(1), scenario.ReadRefreshState().NextAttemptAt);
+    }
+
+    private static async Task CacheDuringCooldownAsync()
+    {
+        using var scenario = new Scenario("cached-report");
+        var clock = new TestClock(DateTimeOffset.UtcNow);
+        scenario.WriteCache(clock.GetUtcNow().AddMinutes(-20));
+        await using var provider = scenario.CreateProvider(clock: clock);
+        await provider.ReadAsync();
+        clock.Advance(TimeSpan.FromMinutes(2));
+        scenario.WriteCache(clock.GetUtcNow());
+        var snapshot = await provider.ReadAsync();
+        True(!snapshot.IsStale);
+        Equal(clock.GetUtcNow().ToUnixTimeMilliseconds(), snapshot.ObservedAt.ToUnixTimeMilliseconds());
+        Equal(2, (await File.ReadAllLinesAsync(scenario.Path + ".requests")).Length);
+    }
+
+    private static async Task StateWriteFailureAsync()
+    {
+        using var scenario = new Scenario("weekly");
+        await File.WriteAllTextAsync(scenario.Path + ".refresh", "blocked");
+        await using var provider = scenario.CreateProvider();
+        var snapshot = await provider.ReadAsync();
+        True(snapshot.IsStale);
+        True(!File.Exists(scenario.Path + ".requests"));
+    }
+
+    private static async Task RestartWithoutCacheAsync()
+    {
+        using var scenario = new Scenario("cached-report");
+        await using (var provider = scenario.CreateProvider())
+        {
+            var snapshot = await provider.ReadAsync();
+            True(snapshot.IsStale);
+            Equal(DateTimeOffset.MinValue, snapshot.ObservedAt);
+        }
+        await using (var provider = scenario.CreateProvider())
+        {
+            var snapshot = await provider.ReadAsync();
+            True(snapshot.IsStale);
+            Equal(0, snapshot.Windows.Count);
+        }
+        Equal(2, (await File.ReadAllLinesAsync(scenario.Path + ".requests")).Length);
+    }
+
+    private static async Task SuccessIntervalAsync()
+    {
+        using var scenario = new Scenario("weekly");
+        await using var provider = scenario.CreateProvider();
+        var first = await provider.ReadAsync();
+        True(!first.IsStale);
+        Equal(0, scenario.ReadRefreshState().Failures);
+        True(scenario.ReadRefreshState().NextAttemptAt > DateTimeOffset.UtcNow.AddMinutes(9));
+        File.Delete(scenario.Path + ".cache");
+        await provider.ReadAsync();
+        Equal(2, (await File.ReadAllLinesAsync(scenario.Path + ".requests")).Length);
+    }
+
+    private sealed class TestClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+        internal void Advance(TimeSpan elapsed) => now += elapsed;
+    }
+
+    private static async Task CachedAccountSwitchAsync()
+    {
+        using var scenario = new Scenario("switch");
+        scenario.WriteCache(DateTimeOffset.UtcNow.AddMinutes(-1));
+        await using var provider = scenario.CreateProvider();
+        Equal(20d, (await provider.ReadAsync()).Windows.Single().UsedPercent);
+        Equal(2, (await File.ReadAllLinesAsync(scenario.Path + ".requests")).Length);
+    }
+
+    private static async Task RecoveryAsync()
+    {
+        using var scenario = new Scenario("cached-report");
+        scenario.WriteCache(DateTimeOffset.UtcNow.AddMinutes(-20));
+        await using var provider = scenario.CreateProvider();
+        True((await provider.ReadAsync()).IsStale);
+        var path = Directory.GetFiles(scenario.Path + ".refresh").Single();
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(scenario.ReadRefreshState() with { NextAttemptAt = DateTimeOffset.UtcNow.AddSeconds(-1) }));
+        Environment.SetEnvironmentVariable("USAGE_MONITOR_CLAUDE_SCENARIO", "weekly");
+        True(!(await provider.ReadAsync()).IsStale);
+        Equal(0, scenario.ReadRefreshState().Failures);
+    }
+
+    private static async Task CorruptStateAsync()
+    {
+        using var scenario = new Scenario("cached-report");
+        await using var provider = scenario.CreateProvider();
+        await provider.ReadAsync();
+        var path = Directory.GetFiles(scenario.Path + ".refresh").Single();
+        foreach (var json in new[] { "{", "null", "{}" })
+        {
+            await File.WriteAllTextAsync(path, json);
+            True((await provider.ReadAsync()).IsStale);
+        }
+        Equal(2, (await File.ReadAllLinesAsync(scenario.Path + ".requests")).Length);
     }
 
     private static bool IsProcessRunning(int pid)
@@ -394,7 +590,30 @@ internal static class ClaudeTests
         {
             Environment.SetEnvironmentVariable("USAGE_MONITOR_CLAUDE_SCENARIO", name);
             Environment.SetEnvironmentVariable("USAGE_MONITOR_CLAUDE_STATE", Path);
+            Environment.SetEnvironmentVariable("USAGE_MONITOR_CLAUDE_CACHE", Path + ".cache");
         }
+
+        internal ClaudeUsageProvider CreateProvider(TimeSpan timeout = default) => CreateProvider(TimeProvider.System, timeout);
+
+        internal ClaudeUsageProvider CreateProvider(TimeProvider clock, TimeSpan timeout = default) => new(
+            Environment.ProcessPath ?? "", timeout == default ? TimeSpan.FromSeconds(30) : timeout,
+            Path + ".cache", Path + ".refresh", clock);
+
+        internal void WriteCache(DateTimeOffset observedAt)
+        {
+            File.WriteAllText(Path + ".cache", JsonSerializer.Serialize(new
+            {
+                oauthAccount = new { accountUuid = "account-id", emailAddress = "test@example.invalid", organizationUuid = "old-org" },
+                cachedUsageUtilization = new
+                {
+                    accountUuid = "account-id", fetchedAtMs = observedAt.ToUnixTimeMilliseconds(),
+                    utilization = new { seven_day = new { utilization = 17, resets_at = "2026-10-27T02:00:00Z" } }
+                }
+            }));
+        }
+
+        internal ClaudeRefreshState ReadRefreshState() => JsonSerializer.Deserialize<ClaudeRefreshState>(
+            File.ReadAllText(Directory.GetFiles(Path + ".refresh").Single())) ?? new();
 
         internal async Task<int> ReadPidAsync()
         {
@@ -410,7 +629,16 @@ internal static class ClaudeTests
         {
             Environment.SetEnvironmentVariable("USAGE_MONITOR_CLAUDE_SCENARIO", "");
             Environment.SetEnvironmentVariable("USAGE_MONITOR_CLAUDE_STATE", "");
-            foreach (var suffix in new[] { "", ".commands", ".requests", ".pid", ".eof", ".eof-complete" })
+            Environment.SetEnvironmentVariable("USAGE_MONITOR_CLAUDE_CACHE", "");
+            if (Directory.Exists(Path + ".refresh"))
+            {
+                foreach (var file in Directory.GetFiles(Path + ".refresh"))
+                    File.Delete(file);
+                Directory.Delete(Path + ".refresh");
+            }
+            else
+                File.Delete(Path + ".refresh");
+            foreach (var suffix in new[] { "", ".commands", ".requests", ".pid", ".eof", ".eof-complete", ".cache" })
             {
                 File.Delete(Path + suffix);
             }

@@ -137,6 +137,16 @@ internal static class FakeClaudeCli
         }
 
         using var reportDocument = JsonDocument.Parse(report);
+        if (scenario != "cached-report" && reportDocument.RootElement.ValueKind == JsonValueKind.Object &&
+            reportDocument.RootElement.TryGetProperty("rate_limits", out var limits) && limits.ValueKind == JsonValueKind.Object)
+        {
+            var orgId = scenario == "switch" && count >= 2 ? "new-org" : "old-org";
+            await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("USAGE_MONITOR_CLAUDE_CACHE") ?? "", JsonSerializer.Serialize(new
+            {
+                oauthAccount = new { accountUuid = "account-id", emailAddress = "test@example.invalid", organizationUuid = orgId },
+                cachedUsageUtilization = new { accountUuid = "account-id", fetchedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), utilization = limits }
+            }));
+        }
         await RespondAsync(usageId, reportDocument.RootElement);
         while (await Console.In.ReadLineAsync() is { } line)
         {

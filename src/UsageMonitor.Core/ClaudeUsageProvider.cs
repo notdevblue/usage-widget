@@ -3,6 +3,12 @@ namespace UsageMonitor.Core;
 public sealed class ClaudeUsageProvider : IUsageProvider
 {
     private readonly ClaudeProcessTransport transport;
+    private readonly ClaudeUsageCache cache;
+    private readonly ClaudeRefreshStateStore refreshStates;
+    private readonly TimeProvider clock;
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
+    private UsageSnapshot lastSnapshot = new();
+    private string lastIdentity = "";
     private readonly SemaphoreSlim operationGate = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
     private bool versionChecked;
@@ -16,9 +22,17 @@ public sealed class ClaudeUsageProvider : IUsageProvider
     }
 
     internal ClaudeUsageProvider(string executablePath, TimeSpan requestTimeout)
+        : this(executablePath, requestTimeout, ClaudeUsageCache.DefaultPath, ClaudeRefreshStateStore.DefaultDirectory, TimeProvider.System)
+    {
+    }
+
+    internal ClaudeUsageProvider(string executablePath, TimeSpan requestTimeout, string cachePath, string stateDirectory, TimeProvider clock)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         transport = new(executablePath, requestTimeout);
+        cache = new(cachePath);
+        refreshStates = new(stateDirectory);
+        this.clock = clock;
     }
 
     public async Task<UsageSnapshot> ReadAsync(CancellationToken ct = default)
@@ -40,15 +54,19 @@ public sealed class ClaudeUsageProvider : IUsageProvider
                 var authentication = await ReadAuthenticationAsync(ct).ConfigureAwait(false);
                 if (authentication.Account.Kind != AccountKind.Claude)
                 {
+                    lastSnapshot = new();
+                    lastIdentity = "";
                     return CreateSnapshot(authentication.Account, []);
                 }
 
-                var report = await transport.ReadUsageAsync(ct).ConfigureAwait(false);
+                var snapshot = await ReadAccountUsageAsync(authentication, ct).ConfigureAwait(false);
 
                 var verified = await ReadAuthenticationAsync(ct).ConfigureAwait(false);
                 if (authentication.Identity == verified.Identity)
                 {
-                    return CreateSnapshot(authentication.Account, ClaudeResponseParser.ReadUsageReport(report));
+                    lastIdentity = authentication.Identity;
+                    lastSnapshot = snapshot;
+                    return snapshot;
                 }
             }
 
@@ -58,6 +76,65 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         {
             operationGate.Release();
         }
+    }
+
+    private async Task<UsageSnapshot> ReadAccountUsageAsync(ClaudeAuthentication authentication, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        var hasCache = cache.TryGet(authentication, now, out var cached);
+        if (hasCache && now - cached.ObservedAt < RefreshInterval)
+            return cached;
+
+        if (!hasCache && lastIdentity == authentication.Identity)
+            cached = lastSnapshot;
+        var state = refreshStates.Load(authentication.Identity, now);
+        if (now < state.NextAttemptAt)
+            return WaitingSnapshot(authentication.Account, cached, state.NextAttemptAt);
+
+        state = new()
+        {
+            Failures = Math.Min(state.Failures + 1, 2),
+            NextAttemptAt = now.AddMinutes(state.Failures == 0 ? 30 : 60)
+        };
+        if (!refreshStates.TrySave(authentication.Identity, state))
+        {
+            return WaitingSnapshot(authentication.Account, cached, state.NextAttemptAt) with
+            {
+                StatusDetail = "조회 대기 상태를 저장하지 못해 서버 조회를 보류했어요."
+            };
+        }
+
+        try
+        {
+            var report = await transport.ReadUsageAsync(ct).ConfigureAwait(false);
+            var windows = ClaudeResponseParser.ReadUsageReport(report);
+            now = clock.GetUtcNow();
+            if (cache.TryGet(authentication, now, out var refreshed) &&
+                refreshed.ObservedAt > cached.ObservedAt && now - refreshed.ObservedAt < RefreshInterval)
+            {
+                refreshStates.TrySave(authentication.Identity, new() { NextAttemptAt = now + RefreshInterval });
+                return refreshed;
+            }
+
+            if (cached.ObservedAt == DateTimeOffset.MinValue && cached.Windows.Count == 0)
+                cached = CreateSnapshot(authentication.Account, windows) with { ObservedAt = DateTimeOffset.MinValue };
+            return WaitingSnapshot(authentication.Account, cached, state.NextAttemptAt);
+        }
+        catch (Exception error) when (error is ClaudeConnectionException or TimeoutException)
+        {
+            if (cached.Windows.Count == 0)
+                throw;
+            return WaitingSnapshot(authentication.Account, cached, state.NextAttemptAt);
+        }
+    }
+
+    private UsageSnapshot WaitingSnapshot(UsageAccount account, UsageSnapshot cached, DateTimeOffset nextAttemptAt)
+    {
+        return cached with
+        {
+            ProviderId = Id, ProviderName = DisplayName, Account = account, IsStale = true,
+            StatusDetail = $"최신 갱신을 확인하지 못했어요. 서버 재조회: {nextAttemptAt.ToLocalTime():HH:mm} 이후"
+        };
     }
 
     public Task<LoginAttempt> BeginLoginAsync(CancellationToken ct = default)
@@ -109,7 +186,7 @@ public sealed class ClaudeUsageProvider : IUsageProvider
             ProviderName = DisplayName,
             Account = account,
             Windows = windows,
-            ObservedAt = DateTimeOffset.UtcNow
+            ObservedAt = clock.GetUtcNow()
         };
     }
 
