@@ -17,6 +17,7 @@ public sealed class SettingsWindow : Window
 {
     private readonly Func<LayoutContext> getContext;
     private readonly CheckBox pinOption = new();
+    private readonly CheckBox startupOption = new() { IsEnabled = false };
     private readonly ComboBox fiveHourOption = new();
     private readonly CheckBox resetCountdownOption = new();
     private readonly CheckBox codexDisplayOption = new();
@@ -51,6 +52,7 @@ public sealed class SettingsWindow : Window
     private bool synchronizing;
 
     public event Action<AppSettings> SettingsChanged = delegate { };
+    public event Action<bool> StartupChanged = delegate { };
     public event Action LoginRequested = delegate { };
     public event Action ExecutableRequested = delegate { };
     public event Action ClaudeLoginRequested = delegate { };
@@ -147,6 +149,15 @@ public sealed class SettingsWindow : Window
         RefreshControls();
     }
 
+    public void UpdateStartup(bool enabled, bool available)
+    {
+        var wasSynchronizing = synchronizing;
+        synchronizing = true;
+        startupOption.IsChecked = enabled;
+        startupOption.IsEnabled = available;
+        synchronizing = wasSynchronizing;
+    }
+
     private Grid BuildWindow()
     {
         var root = new Grid();
@@ -204,6 +215,12 @@ public sealed class SettingsWindow : Window
         pinOption.Unchecked += (_, _) => ChangePin();
         AutomationProperties.SetName(pinOption, "항상 위에 표시");
         section.Children.Add(pinOption);
+        startupOption.Content = "Windows 로그인 시 자동 실행";
+        startupOption.Margin = new Thickness(0, 0, 0, 12);
+        startupOption.Checked += (_, _) => ChangeStartup();
+        startupOption.Unchecked += (_, _) => ChangeStartup();
+        AutomationProperties.SetName(startupOption, "Windows 로그인 시 자동 실행");
+        section.Children.Add(startupOption);
         AddProviderDisplayOption(section, codexDisplayOption, "Codex 표시");
         AddProviderDisplayOption(section, claudeDisplayOption, "Claude 표시");
         AddProviderDisplayOption(section, grokDisplayOption, "Grok 표시");
@@ -245,6 +262,12 @@ public sealed class SettingsWindow : Window
         option.Unchecked += (_, _) => ChangeProviderDisplay();
         AutomationProperties.SetName(option, name);
         section.Children.Add(option);
+    }
+
+    private void ChangeStartup()
+    {
+        if (synchronizing == false && startupOption.IsEnabled)
+            StartupChanged(startupOption.IsChecked == true);
     }
 
     private void ChangeProviderDisplay()

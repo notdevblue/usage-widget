@@ -48,6 +48,7 @@ internal static class Program
             ProviderLayoutTests.Run();
             ProviderRuntimeTests.Run();
             ProviderVisibilityTests.Run();
+            StartupSettingsTests.Run();
             Console.WriteLine($"PASS {assertions} presentation assertions; PNGs: {OutputDirectory}");
             return 0;
         }

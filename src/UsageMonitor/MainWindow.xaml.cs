@@ -27,6 +27,7 @@ public partial class MainWindow : Window
 {
     private readonly WidgetViewModel _view = new();
     private readonly SettingsStore _store = new();
+    private readonly StartupRegistration _startup = new();
     private readonly CodexExecutableLocator _codexLocator = new();
     private readonly ClaudeExecutableLocator _claudeLocator = new();
     private readonly GrokExecutableLocator _grokLocator = new();
@@ -216,6 +217,7 @@ public partial class MainWindow : Window
     {
         if (_dialogs.TryGetValue("settings", out var existing)) { existing.Activate(); return; }
         var window = new SettingsWindow(_settings, BuildLayoutContext) { Owner = this };
+        ConfigureStartup(window);
         _dialogs["settings"] = window;
         window.SettingsChanged += value =>
         {
@@ -243,6 +245,34 @@ public partial class MainWindow : Window
         window.Closed += (sender, args) => _dialogs.Remove("settings");
         UpdateView();
         window.Show();
+    }
+
+    private void ConfigureStartup(SettingsWindow window)
+    {
+        if (_preview)
+        {
+            window.UpdateStartup(false, false);
+            return;
+        }
+        window.UpdateStartup(_startup.IsEnabled(), true);
+        window.StartupChanged += enabled =>
+        {
+            if (_preview)
+                return;
+            var success = _startup.TrySetEnabled(enabled, out var error);
+            window.UpdateStartup(_startup.IsEnabled(), true);
+            if (success)
+                window.ShowFeedback(StartupFeedback(enabled));
+            else
+                window.ShowFeedback(error);
+        };
+    }
+
+    private static string StartupFeedback(bool enabled)
+    {
+        if (enabled)
+            return "Windows 로그인 시 자동으로 실행해요.";
+        return "Windows 로그인 시 자동 실행을 껐어요.";
     }
 
     private ProviderRuntime Runtime(string id) => _providers.Single(runtime => runtime.Id == id);

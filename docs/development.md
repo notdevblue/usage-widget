@@ -1,6 +1,6 @@
 # 개발과 배포
 
-다음 작업에서 저장소 위치와 릴리스 절차를 다시 찾지 않기 위한 문서다. 사용자용 설명은 [README.md](../README.md), 검증 범위와 테스트 수는 [VALIDATION.md](../VALIDATION.md)에 있다. 현재 배포 버전은 **0.1.3**이고 원격은 `https://github.com/notdevblue/usage-widget`이다. 다음 릴리스 번호는 0.1.4다.
+다음 작업에서 저장소 위치와 릴리스 절차를 다시 찾지 않기 위한 문서다. 사용자용 설명은 [README.md](../README.md), 검증 범위와 테스트 수는 [VALIDATION.md](../VALIDATION.md)에 있다. 현재 배포 버전은 **0.1.4**이고 원격은 `https://github.com/notdevblue/usage-widget`이다. 다음 릴리스 번호는 0.1.5다.
 
 ## 저장소
 
@@ -65,7 +65,7 @@ Services 테스트는 `src/UsageMonitor/Services/*.cs`를 포함한다. 그 폴�
 
 공개 파일은 Windows x64 두 개다. `Publish.ps1 -Runtime win-arm64`는 있지만 ARM64 실행은 검증하지 않았으므로 릴리스 자산으로 올리지 않는다.
 
-1. `UsageMonitor.csproj`의 `<Version>`을 올린다. 이미 올라간 태그 번호는 다시 쓰지 않는다. v0.1.2는 Claude 조회 제한 대응이고, v0.1.3은 Grok 포함 크레딧이다.
+1. `UsageMonitor.csproj`의 `<Version>`을 올린다. 이미 올라간 태그 번호는 다시 쓰지 않는다. v0.1.2는 Claude 조회 제한 대응, v0.1.3은 Grok 포함 크레딧, v0.1.4는 리셋 소식·서비스별 표시·로그인 시 자동 실행이다.
 2. Grok ACP `clientInfo.version`은 `GrokProcessTransport`에 따로 적혀 있다. 제품 버전과 맞출 때만 고친다. Codex 쪽 clientInfo는 0.1.0 그대로다.
 3. `scripts/Verify.ps1`을 통과시킨다. 테스트 수가 바뀌면 VALIDATION.md를 그 결과에 맞춘다.
 4. 소스만 커밋한다. `artifacts/`는 넣지 않는다.
