@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,6 +37,10 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DispatcherTimer _refreshTimer = new();
     private readonly DispatcherTimer _clockTimer = new();
+    private readonly DispatcherTimer _resetNewsTimer = new();
+    private readonly HttpClient _resetNewsClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private readonly CodexResetNewsService _resetNews;
+    private Task _resetNewsTask = Task.CompletedTask;
     private readonly EventHandler _displayChanged;
     private readonly Forms.NotifyIcon _tray;
     private readonly System.Drawing.Icon _trayIcon;
@@ -51,13 +56,18 @@ public partial class MainWindow : Window
     public MainWindow(string preview)
     {
         _preview = preview.Length > 0;
-        _settings = _preview ? new AppSettings { Theme = WidgetTheme.Light } : _store.Load();
+        if (_preview)
+            _settings = new AppSettings { Theme = WidgetTheme.Light };
+        else
+            _settings = _store.Load();
         _displayChanged = (sender, args) => Dispatcher.BeginInvoke(ClampToScreen);
         InitializeComponent();
         WidgetDragInput.Attach(WidgetContent, BeginWidgetDrag);
         ShowInTaskbar = _preview;
         DataContext = _view;
         _view.Preview = _preview;
+        _resetNews = new(_resetNewsClient);
+        ConfigureResetNews(preview);
         ApplyTheme();
         ApplyAppearance();
         Topmost = _settings.AlwaysOnTop;
@@ -65,11 +75,17 @@ public partial class MainWindow : Window
         foreach (var runtime in _providers)
         {
             runtime.StateChanged = (sender, args) => Dispatcher.BeginInvoke(() => _ = RefreshProviderAsync(runtime));
-            runtime.Location = _preview ? new() { Found = preview != "missing", Source = "미리보기" } : Locate(runtime.Id);
             if (_preview)
+            {
+                runtime.Location = new() { Found = preview != "missing", Source = "미리보기" };
                 AttachProvider(runtime, new PreviewUsageProvider(preview, runtime.Id));
-            else if (runtime.Location.Found)
-                AttachProvider(runtime, _catalog.Create(runtime.Id, runtime.Location.Path));
+            }
+            else
+            {
+                runtime.Location = Locate(runtime.Id);
+                if (runtime.Location.Found)
+                    AttachProvider(runtime, _catalog.Create(runtime.Id, runtime.Location.Path));
+            }
         }
 
         var resource = Application.GetResourceStream(new Uri("pack://application:,,,/UsageMonitor;component/Assets/widget.ico"))
@@ -78,7 +94,10 @@ public partial class MainWindow : Window
             _trayIcon = new System.Drawing.Icon(resource.Stream);
         _tray = new Forms.NotifyIcon { Icon = _trayIcon, Text = "Usage Monitor", Visible = true };
         ConfigureTray();
-        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, _preview ? $"UsageMonitor.Show.Preview.{Environment.ProcessId}" : "UsageMonitor.Show");
+        var showEventName = "UsageMonitor.Show";
+        if (_preview)
+            showEventName = $"UsageMonitor.Show.Preview.{Environment.ProcessId}";
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, showEventName);
         _showWait = ThreadPool.RegisterWaitForSingleObject(_showEvent, (state, timedOut) => Dispatcher.BeginInvoke(ShowWidget), new object(), Timeout.Infinite, false);
         _refreshTimer.Tick += (sender, args) => { _refreshTimer.Stop(); _ = RefreshAsync(false); };
         _clockTimer.Interval = TimeSpan.FromSeconds(30);
@@ -98,6 +117,71 @@ public partial class MainWindow : Window
         SystemEvents.UserPreferenceChanged += SystemPreferenceChanged;
         SystemEvents.PowerModeChanged += PowerModeChanged;
         SystemEvents.DisplaySettingsChanged += _displayChanged;
+    }
+
+    private void ConfigureResetNews(string preview)
+    {
+        WidgetContent.ResetNoticeRequested += OpenResetNotice;
+        if (_preview)
+        {
+            ApplyPreviewResetNotice(preview);
+            return;
+        }
+
+        _resetNewsTimer.Interval = TimeSpan.FromSeconds(30);
+        _resetNewsTimer.Tick += (sender, args) => RefreshResetNews();
+        Loaded += (sender, args) =>
+        {
+            RefreshResetNews();
+            _resetNewsTimer.Start();
+        };
+    }
+
+    private void ApplyPreviewResetNotice(string preview)
+    {
+        var text = "";
+        if (preview == "reset-scheduled")
+            text = $"Codex 리셋 · {DateTimeOffset.Now.AddHours(2):M/d HH:mm} 예정";
+        else if (preview == "reset-announced")
+            text = "Codex 리셋 예고됨";
+        _view.ApplyResetNotice(new()
+        {
+            Text = text,
+            ToolTip = "미리보기 · 실제 리셋 공지가 아니에요.",
+            SourceUrl = "https://x.com/thsottiaux/status/2114588174249071102"
+        }, DateTimeOffset.Now);
+    }
+
+    private void RefreshResetNews()
+    {
+        if (_quitting || _preview || !_resetNewsTask.IsCompleted)
+            return;
+        _resetNewsTask = RefreshResetNewsAsync();
+    }
+
+    private async Task RefreshResetNewsAsync()
+    {
+        try
+        {
+            var notice = await _resetNews.ReadAsync(_lifetime.Token);
+            if (_quitting == false)
+                _view.ApplyResetNotice(notice, DateTimeOffset.Now);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void OpenResetNotice(string sourceUrl)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(sourceUrl) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            _view.ResetNoticeToolTip = "기본 브라우저를 열지 못했어요. 브라우저 설정을 확인해주세요.";
+        }
     }
 
     private void ConfigureTray()
@@ -730,6 +814,7 @@ public partial class MainWindow : Window
         _quitting = true;
         _refreshTimer.Stop();
         _clockTimer.Stop();
+        _resetNewsTimer.Stop();
         SavePosition();
         SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
         SystemEvents.PowerModeChanged -= PowerModeChanged;
@@ -737,6 +822,8 @@ public partial class MainWindow : Window
         _showWait.Unregister(default);
         _showEvent.Dispose();
         _lifetime.Cancel();
+        await _resetNewsTask;
+        _resetNewsClient.Dispose();
         await Task.WhenAll(_providers.Select(DisposeProviderAsync));
         _tray.Visible = false;
         _tray.ContextMenuStrip?.Dispose();

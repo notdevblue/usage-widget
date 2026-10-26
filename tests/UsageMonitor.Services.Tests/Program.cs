@@ -19,6 +19,7 @@ try
     TestThemeCatalog();
     AppearanceTests.Run(temporaryDirectory, Assert);
     RefreshScheduleTests.Run(Assert);
+    await CodexResetNewsTests.RunAsync(Assert);
     TestLocator();
     ClaudeLocatorTests.Run(temporaryDirectory, Assert);
     GrokLocatorTests.Run(temporaryDirectory, Assert);

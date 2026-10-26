@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using UsageMonitor.Core;
+using UsageMonitor.Services;
 
 namespace UsageMonitor.Presentation;
 
@@ -220,6 +221,47 @@ public sealed class WidgetViewModel : DependencyObject
     }
 
     public bool ShowResetCountdown { get; set; }
+
+    public static readonly DependencyProperty ResetNoticeTextProperty = DependencyProperty.Register(nameof(ResetNoticeText), typeof(string), typeof(WidgetViewModel), new PropertyMetadata(""));
+    public string ResetNoticeText
+    {
+        get => (string)GetValue(ResetNoticeTextProperty);
+        set => SetValue(ResetNoticeTextProperty, value);
+    }
+
+    public static readonly DependencyProperty ResetNoticeToolTipProperty = DependencyProperty.Register(nameof(ResetNoticeToolTip), typeof(string), typeof(WidgetViewModel), new PropertyMetadata(""));
+    public string ResetNoticeToolTip
+    {
+        get => (string)GetValue(ResetNoticeToolTipProperty);
+        set => SetValue(ResetNoticeToolTipProperty, value);
+    }
+
+    public string ResetNoticeSourceUrl { get; private set; } = "";
+
+    public static readonly DependencyProperty ResetNoticeVisibleProperty = DependencyProperty.Register(nameof(ResetNoticeVisible), typeof(bool), typeof(WidgetViewModel), new PropertyMetadata(false));
+    public bool ResetNoticeVisible
+    {
+        get => (bool)GetValue(ResetNoticeVisibleProperty);
+        private set => SetValue(ResetNoticeVisibleProperty, value);
+    }
+
+    public void ApplyResetNotice(CodexResetNotice notice, DateTimeOffset now)
+    {
+        if (notice.IsVisible(now))
+        {
+            ResetNoticeText = notice.Text;
+            ResetNoticeToolTip = notice.ToolTip;
+            ResetNoticeSourceUrl = notice.SourceUrl;
+            ResetNoticeVisible = true;
+        }
+        else
+        {
+            ResetNoticeVisible = false;
+            ResetNoticeText = "";
+            ResetNoticeToolTip = "";
+            ResetNoticeSourceUrl = "";
+        }
+    }
 
     public static readonly DependencyProperty ResetSummaryProperty = DependencyProperty.Register(nameof(ResetSummary), typeof(string), typeof(WidgetViewModel), new PropertyMetadata(""));
     public string ResetSummary

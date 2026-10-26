@@ -41,6 +41,7 @@ internal static class Program
             EmptyAccountEditor();
             StandaloneSettings();
             CompactWidget();
+            CodexResetNoticeTests.Run();
             CompactBarTests.Run();
             UsageColorTests.Run();
             WidgetDragInputTests.Run();
@@ -373,7 +374,7 @@ internal static class Program
         var weeklyHeight = view.DesiredSize.Height;
         True(weeklyHeight <= 45);
         Render(view, 190, (int)Math.Ceiling(weeklyHeight), "compact-weekly.png");
-        Equal(0, Descendants<Button>(view).Count());
+        Equal(0, Descendants<Button>(view).Count(button => button.Visibility == Visibility.Visible));
         True(Descendants<TextBlock>(view).Any(text => text.Text == "Codex ·"));
         Equal(1, Descendants<ProgressBar>(view).Count());
         model.Metrics.Insert(0, new UsageMetric(Window(72, 300), DateTimeOffset.UtcNow, Brushes.SeaGreen, Brushes.Goldenrod, Brushes.Firebrick));
@@ -404,7 +405,7 @@ internal static class Program
         True(view.DesiredSize.Height <= 80);
         Render(view, 190, (int)Math.Ceiling(view.DesiredSize.Height), "compact-codex-claude.png");
         Equal(3, Descendants<ProgressBar>(view).Count());
-        Equal(0, Descendants<Button>(view).Count());
+        Equal(0, Descendants<Button>(view).Count(button => button.Visibility == Visibility.Visible));
         True(Descendants<TextBlock>(view).Any(text => text.Text == "Codex ·"));
         True(Descendants<TextBlock>(view).Any(text => text.Text == "Claude ·"));
         Console.WriteLine($"Codex + Claude widget: 190 x {view.DesiredSize.Height:0}");

@@ -59,6 +59,26 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+        <Grid x:Name="ResetNoticeRow" Height="0" Opacity="0" Visibility="Collapsed" ClipToBounds="True">
+          <Grid.RenderTransform><TranslateTransform x:Name="ResetNoticeTranslation" Y="-4" /></Grid.RenderTransform>
+          <Button x:Name="ResetNoticeButton" Height="20" Padding="0" BorderThickness="0" HorizontalContentAlignment="Left"
+                  Visibility="{Binding ResetNoticeVisible, Converter={StaticResource VisibleWhenTrue}}"
+                  Foreground="{DynamicResource SecondaryBrush}" ToolTip="{Binding ResetNoticeToolTip}"
+                  AutomationProperties.Name="Codex 리셋 공지" Click="ResetNotice_Click">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="15" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+              <Viewbox Width="11" Height="11" VerticalAlignment="Center" HorizontalAlignment="Left">
+                <Canvas Width="24" Height="24">
+                  <Path Data="M 5,17 L 7,14 L 7,9 A 5,5 0 0 1 17,9 L 17,14 L 19,17 Z M 10,20 A 2,2 0 0 0 14,20 M 12,2 L 12,4"
+                        Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                        StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                </Canvas>
+              </Viewbox>
+              <TextBlock Grid.Column="1" Text="{Binding ResetNoticeText}" FontSize="9" VerticalAlignment="Center"
+                         TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+            </Grid>
+          </Button>
+        </Grid>
       </StackPanel>
     </ScrollViewer>
   </Border>
