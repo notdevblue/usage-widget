@@ -64,7 +64,7 @@ dotnet run --project src/UsageMonitor
 ./scripts/Publish.ps1 -Runtime win-arm64
 ```
 
-빌드 산출물과 ZIP은 `artifacts/`에 생성됩니다. 이 폴더, 임시 로그, 로컬 인증 파일은 Git에서 제외합니다. 배포 파일은 GitHub Release에만 올립니다. 검증 범위와 아직 직접 확인하지 않은 환경은 [VALIDATION.md](https://github.com/notdevblue/usage-widget/blob/main/VALIDATION.md)를 참고하세요.
+빌드 산출물과 ZIP은 `artifacts/`에 생성됩니다. 이 폴더, 임시 로그, 로컬 인증 파일은 Git에서 제외합니다. 배포 파일은 GitHub Release에만 올립니다. 프로젝트 구조와 배포 절차는 [docs/development.md](docs/development.md), 검증 범위와 아직 직접 확인하지 않은 환경은 [VALIDATION.md](https://github.com/notdevblue/usage-widget/blob/main/VALIDATION.md)를 참고하세요.
 
 인증 없이 화면을 확인하는 미리보기는 `--preview=weekly`, `dual`, `low`, `signed-out`, `api-key`, `missing`을 지원합니다. 미리보기는 실제 계정에 접속하거나 사용자 설정을 저장하지 않으며, 화면에 미리보기 표시를 붙입니다.
 
