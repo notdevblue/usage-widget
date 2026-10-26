@@ -7,9 +7,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>UsageMonitor</AssemblyName>
     <RootNamespace>UsageMonitor</RootNamespace>
-    <Version>0.1.2</Version>
+    <Version>0.1.3</Version>
     <Product>Usage Monitor</Product>
-    <Description>A compact Windows widget for Codex and Claude usage.</Description>
+    <Description>A compact Windows widget for Codex, Claude, and Grok usage.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/widget.ico</ApplicationIcon>
     <RuntimeFrameworkVersion Condition="'$(SelfContained)' == 'true'">8.0.32</RuntimeFrameworkVersion>

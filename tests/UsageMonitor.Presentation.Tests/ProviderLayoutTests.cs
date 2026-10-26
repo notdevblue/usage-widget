@@ -39,10 +39,10 @@ internal static class ProviderLayoutTests
         var profile = LayoutProfile.Normalize(new()
         {
             Enabled = true,
-            Blocks = [legacy, new() { ProviderId = "CLAUDE", WindowId = " " + ScopedWindowId + " " }, new() { ProviderId = "unknown", WindowId = new string('x', 300) }]
+            Blocks = [legacy, new() { ProviderId = "CLAUDE", WindowId = " " + ScopedWindowId + " " }, new() { ProviderId = "unknown", WindowId = new string('x', 300) }, new() { ProviderId = "GROK" }]
         });
         var restored = JsonSerializer.Deserialize<LayoutProfile>(JsonSerializer.Serialize(profile)) ?? new();
-        Check(restored.Blocks.Select(block => block.ProviderId).SequenceEqual(new[] { "codex", "claude", "codex" }), "Provider selections must normalize and survive serialization.");
+        Check(restored.Blocks.Select(block => block.ProviderId).SequenceEqual(new[] { "codex", "claude", "codex", "grok" }), "Provider selections must normalize and survive serialization.");
         Check(restored.Blocks[0].Source == UsageWindowSource.Weekly, "Provider migration must preserve the selected limit.");
         Check(restored.Blocks[1].WindowId == ScopedWindowId && restored.Blocks[2].WindowId.Length == 256, "Specific window IDs must normalize, remain bounded and survive serialization.");
     }
@@ -125,7 +125,7 @@ internal static class ProviderLayoutTests
         Arrange(root);
         var preview = Descendants<UsageLayoutCanvas>(root).Single();
         var provider = ByName<ComboBox>(root, "제공자");
-        Check(provider.Items.Count == 2 && provider.SelectedIndex == 0, "Every legacy block must start with a Codex provider selector.");
+        Check(provider.Items.Count == 3 && provider.SelectedIndex == 0, "Every legacy block must start with a Codex provider selector.");
         provider.SelectedIndex = 1;
         Check(Texts(preview).Contains("claude@example.invalid"), "Changing an account block's provider must update its account.");
         ByName<ComboBox>(root, "블록").SelectedIndex = (int)LayoutBlockKind.Status;
@@ -133,6 +133,8 @@ internal static class ProviderLayoutTests
         ByName<ComboBox>(root, "블록").SelectedIndex = (int)LayoutBlockKind.Usage;
         ByName<ComboBox>(root, "한도 선택").SelectedIndex = (int)UsageWindowSource.Weekly;
         Check(Texts(preview).Contains("80%"), "The editor must resolve Claude's weekly quota.");
+        provider.SelectedIndex = 2;
+        Check(!Texts(preview).Any(text => text.Contains("claude@example.invalid", StringComparison.Ordinal) || text.Contains("codex@example.invalid", StringComparison.Ordinal)), "Selecting Grok must not keep another provider's account.");
         provider.SelectedIndex = 0;
         Check(Texts(preview).Contains("70%"), "Changing provider must resolve Codex's weekly quota.");
         Check(Descendants<ListBox>(root).Single().Items.Cast<ListBoxItem>().All(item => item.Content is string label && label.StartsWith("Codex · ", StringComparison.Ordinal)), "The block list must identify the selected provider.");
@@ -158,6 +160,18 @@ internal static class ProviderLayoutTests
         }
 
         editor.Close();
+        var grok = new LayoutProviderContext
+        {
+            ProviderId = "grok", ProviderName = "Grok", Windows = [Window(75, 10080) with { Id = "grok:weekly" }],
+            Account = "연결된 Grok 계정", Plan = "SuperGrok", Status = "방금 동기화", StatusBrush = Brushes.SeaGreen
+        };
+        var withGrok = new LayoutEditorWindow(new(), Context() with { Providers = [..Context().Providers, grok] });
+        Arrange((FrameworkElement)withGrok.Content);
+        ByName<ComboBox>((FrameworkElement)withGrok.Content, "레이아웃 프리셋").SelectedIndex = 1;
+        var grokPreview = Descendants<UsageLayoutCanvas>((FrameworkElement)withGrok.Content).Single();
+        Check(grokPreview.Children.Count == 5, "Presets must include a Grok quota alongside Codex and Claude.");
+        Check(Texts(grokPreview).Any(text => text.StartsWith("Grok · ", StringComparison.Ordinal)), "Preset Grok blocks must identify their provider.");
+        withGrok.Close();
         var claudeOnly = new LayoutEditorWindow(new(), new() { Providers = [Context().ResolveProvider("claude")] });
         Arrange((FrameworkElement)claudeOnly.Content);
         var claudePreview = Descendants<UsageLayoutCanvas>((FrameworkElement)claudeOnly.Content).Single();

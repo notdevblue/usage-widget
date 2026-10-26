@@ -11,7 +11,8 @@ public sealed class UsageProviderCatalog
     private readonly Dictionary<string, Func<string, IUsageProvider>> _factories = new(StringComparer.OrdinalIgnoreCase)
     {
         ["codex"] = path => new CodexUsageProvider(path),
-        ["claude"] = path => new ClaudeUsageProvider(path)
+        ["claude"] = path => new ClaudeUsageProvider(path),
+        ["grok"] = path => new GrokUsageProvider(path)
     };
 
     public IUsageProvider Create(string id, string executablePath)
@@ -35,7 +36,12 @@ public sealed class UnavailableUsageProvider(string id = "codex", string name = 
 public sealed class PreviewUsageProvider(string scenario, string providerId = "codex") : IUsageProvider
 {
     public string Id => providerId;
-    public string DisplayName => providerId == "claude" ? "Claude" : "Codex";
+    public string DisplayName => providerId switch
+    {
+        "claude" => "Claude",
+        "grok" => "Grok",
+        _ => "Codex"
+    };
 
     public Task<UsageSnapshot> ReadAsync(CancellationToken ct = default)
     {
@@ -44,7 +50,12 @@ public sealed class PreviewUsageProvider(string scenario, string providerId = "c
             windows.Add(new UsageWindow { Id = "5h", Label = "5시간", UsedPercent = scenario == "low" ? 96 : 28, WindowMinutes = 300, ResetsAt = DateTimeOffset.Now.AddHours(3).AddMinutes(24) });
         if (scenario is not ("signed-out" or "api-key" or "missing"))
             windows.Add(new UsageWindow { Id = "weekly", Label = "주간", UsedPercent = 36, WindowMinutes = 10080, ResetsAt = DateTimeOffset.Now.AddDays(4).AddHours(8) });
-        var kind = scenario == "signed-out" ? AccountKind.SignedOut : scenario == "api-key" ? AccountKind.ApiKey : providerId == "claude" ? AccountKind.Claude : AccountKind.ChatGpt;
+        var kind = scenario == "signed-out" ? AccountKind.SignedOut : scenario == "api-key" ? AccountKind.ApiKey : providerId switch
+        {
+            "claude" => AccountKind.Claude,
+            "grok" => AccountKind.Grok,
+            _ => AccountKind.ChatGpt
+        };
         return Task.FromResult(new UsageSnapshot
         {
             ProviderId = Id, ProviderName = DisplayName,

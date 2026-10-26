@@ -41,4 +41,5 @@ public sealed record AppSettings
     public int RefreshSeconds { get; init; } = 60;
     public string CodexPath { get; init; } = "";
     public string ClaudePath { get; init; } = "";
+    public string GrokPath { get; init; } = "";
 }

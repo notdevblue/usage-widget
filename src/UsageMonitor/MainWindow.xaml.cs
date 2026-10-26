@@ -28,10 +28,11 @@ public partial class MainWindow : Window
     private readonly SettingsStore _store = new();
     private readonly CodexExecutableLocator _codexLocator = new();
     private readonly ClaudeExecutableLocator _claudeLocator = new();
+    private readonly GrokExecutableLocator _grokLocator = new();
     private readonly UsageProviderCatalog _catalog = new();
     private readonly RefreshSchedule _schedule = new();
     private readonly Dictionary<string, SettingsWindow> _dialogs = new();
-    private readonly ProviderRuntime[] _providers = [new("codex", "Codex"), new("claude", "Claude")];
+    private readonly ProviderRuntime[] _providers = [new("codex", "Codex"), new("claude", "Claude"), new("grok", "Grok")];
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DispatcherTimer _refreshTimer = new();
     private readonly DispatcherTimer _clockTimer = new();
@@ -149,17 +150,24 @@ public partial class MainWindow : Window
         };
         window.LoginRequested += () => _ = ConnectAsync(_providers[0]);
         window.ExecutableRequested += () => _ = ChooseExecutableAsync(_providers[0]);
-        window.ClaudeLoginRequested += () => OpenClaudeLogin(_providers[1]);
-        window.ClaudeExecutableRequested += () => _ = ChooseExecutableAsync(_providers[1]);
+        window.ClaudeLoginRequested += () => OpenClaudeLogin(Runtime("claude"));
+        window.ClaudeExecutableRequested += () => _ = ChooseExecutableAsync(Runtime("claude"));
+        window.GrokLoginRequested += () => OpenGrokLogin(Runtime("grok"));
+        window.GrokExecutableRequested += () => _ = ChooseExecutableAsync(Runtime("grok"));
         window.QuitRequested += () => _ = QuitAsync();
         window.Closed += (sender, args) => _dialogs.Remove("settings");
         UpdateView();
         window.Show();
     }
 
-    private ExecutableLocation Locate(string id, string preferredPath = "") => id == "claude"
-        ? _claudeLocator.Find(preferredPath.Length > 0 ? preferredPath : _settings.ClaudePath)
-        : _codexLocator.Find(preferredPath.Length > 0 ? preferredPath : _settings.CodexPath);
+    private ProviderRuntime Runtime(string id) => _providers.Single(runtime => runtime.Id == id);
+
+    private ExecutableLocation Locate(string id, string preferredPath = "") => id switch
+    {
+        "claude" => _claudeLocator.Find(preferredPath.Length > 0 ? preferredPath : _settings.ClaudePath),
+        "grok" => _grokLocator.Find(preferredPath.Length > 0 ? preferredPath : _settings.GrokPath),
+        _ => _codexLocator.Find(preferredPath.Length > 0 ? preferredPath : _settings.CodexPath)
+    };
 
     private static void AttachProvider(ProviderRuntime runtime, IUsageProvider provider)
     {
@@ -315,14 +323,19 @@ public partial class MainWindow : Window
     {
         var view = runtime.View;
         var account = runtime.Snapshot.Account;
-        var connected = account.Kind is AccountKind.ChatGpt or AccountKind.Claude;
+        var connected = account.Kind is AccountKind.ChatGpt or AccountKind.Claude or AccountKind.Grok;
         view.Metrics.Clear();
         foreach (var window in DisplayWindows(runtime))
             view.Metrics.Add(new UsageMetric(window, DateTimeOffset.Now, BrushResource("AccentBrush"), BrushResource("WarningBrush"), BrushResource("ErrorBrush")));
         view.Plan = FormatPlan(account.Plan);
         view.Account = account.Email.Length > 0 ? account.Email : connected ? $"연결된 {runtime.Name} 계정" : "연결된 계정 없음";
         view.RuntimeMissing = false;
-        view.ActionText = runtime.Id == "claude" ? "Claude에서 로그인" : connected ? "다른 계정으로 로그인" : "ChatGPT로 로그인";
+        view.ActionText = runtime.Id switch
+        {
+            "claude" => "Claude에서 로그인",
+            "grok" => "Grok에서 로그인",
+            _ => connected ? "다른 계정으로 로그인" : "ChatGPT로 로그인"
+        };
         view.EmptyTitle = connected && runtime.Snapshot.IsStale && runtime.Snapshot.Windows.Count == 0 ? "사용량 조회 대기" : account.Kind switch
         {
             AccountKind.SignedOut => "로그인 필요",
@@ -381,6 +394,10 @@ public partial class MainWindow : Window
             dialog.UpdateConnection(codex.Stale ? $"{codex.Account} (마지막 조회)" : codex.Account, codex.ActionText, !_preview && !_providers[0].Transitioning, codex.RuntimeMissing, codex.Detail);
             dialog.UpdateClaudeConnection(claude.Stale ? $"{claude.Account} (마지막 조회)" : claude.Account, claude.ActionText,
                 !_preview && !_providers[1].Transitioning && !_providers[1].LoginPending, claude.RuntimeMissing, claude.Detail);
+            var grokRuntime = Runtime("grok");
+            var grok = grokRuntime.View;
+            dialog.UpdateGrokConnection(grok.Stale ? $"{grok.Account} (마지막 조회)" : grok.Account, grok.ActionText,
+                !_preview && !grokRuntime.Transitioning && !grokRuntime.LoginPending, grok.RuntimeMissing, grok.Detail);
         }
     }
 
@@ -464,6 +481,47 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenGrokLogin(ProviderRuntime runtime)
+    {
+        if (_preview || _quitting || runtime.Transitioning || runtime.LoginPending)
+            return;
+        if (!runtime.Location.Found) { OpenUrl("https://x.ai/cli", runtime); return; }
+        try
+        {
+            var start = new ProcessStartInfo(runtime.Location.Path) { UseShellExecute = true };
+            start.ArgumentList.Add("login");
+            if (Process.Start(start) is not Process process)
+                throw new InvalidOperationException();
+            runtime.LoginPending = true;
+            ResetConnectionPresentation(runtime);
+            runtime.View.EmptyTitle = "로그인 중";
+            runtime.View.ActionText = "Grok 로그인 중";
+            runtime.View.Detail = "열린 Grok 로그인 창에서 연결해주세요. 완료 후 자동으로 확인해요.";
+            RenderSnapshots();
+            ScheduleNext();
+            _ = ObserveGrokLoginAsync(runtime, process);
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            runtime.View.Detail = "Grok 로그인 창을 열지 못했어요. 터미널에서 grok login을 실행해주세요.";
+            UpdateView();
+        }
+    }
+
+    private async Task ObserveGrokLoginAsync(ProviderRuntime runtime, Process process)
+    {
+        try { await process.WaitForExitAsync(_lifetime.Token); }
+        catch (OperationCanceledException) when (_quitting) { }
+        catch (InvalidOperationException) { runtime.View.Detail = "Grok 로그인 상태를 확인해주세요."; }
+        finally
+        {
+            process.Dispose();
+            runtime.LoginPending = false;
+            if (!_quitting)
+                await RefreshProviderAsync(runtime);
+        }
+    }
+
     private async Task ObserveClaudeLoginAsync(ProviderRuntime runtime, Process process)
     {
         try { await process.WaitForExitAsync(_lifetime.Token); }
@@ -510,7 +568,12 @@ public partial class MainWindow : Window
             await runtime.Provider.DisposeAsync();
             runtime.Location = location;
             AttachProvider(runtime, _catalog.Create(runtime.Id, location.Path));
-            _settings = runtime.Id == "claude" ? _settings with { ClaudePath = location.Path } : _settings with { CodexPath = location.Path };
+            _settings = runtime.Id switch
+            {
+                "claude" => _settings with { ClaudePath = location.Path },
+                "grok" => _settings with { GrokPath = location.Path },
+                _ => _settings with { CodexPath = location.Path }
+            };
             ResetConnectionPresentation(runtime);
             SaveSettings();
         }
@@ -734,6 +797,7 @@ public partial class MainWindow : Window
         CodexConnectionException codex => codex.Message,
         CodexRequestException request => request.Message,
         ClaudeConnectionException claude => claude.Message,
+        GrokConnectionException grok => grok.Message,
         TimeoutException => $"{name} 응답이 늦어지고 있어요. 잠시 후 자동으로 다시 연결해요.",
         OperationCanceledException => "요청을 취소했어요. 자동으로 다시 연결해요.",
         _ => $"{name}에 연결하지 못했어요. 실행 파일과 로그인, 네트워크를 확인해주세요."

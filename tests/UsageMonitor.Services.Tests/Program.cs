@@ -21,6 +21,7 @@ try
     RefreshScheduleTests.Run(Assert);
     TestLocator();
     ClaudeLocatorTests.Run(temporaryDirectory, Assert);
+    GrokLocatorTests.Run(temporaryDirectory, Assert);
     Console.WriteLine($"Passed {assertions} service assertions.");
 }
 finally

@@ -72,7 +72,7 @@ public sealed record LayoutProfile
             blocks.Add(block with
             {
                 Id = id,
-                ProviderId = string.Equals(block.ProviderId, "claude", StringComparison.OrdinalIgnoreCase) ? "claude" : "codex",
+                ProviderId = NormalizeProvider(block.ProviderId),
                 WindowId = windowId.Length > 256 ? windowId[..256] : windowId,
                 Kind = Enum.IsDefined(block.Kind) ? block.Kind : LayoutBlockKind.Usage,
                 Visualization = Enum.IsDefined(block.Visualization) ? block.Visualization : UsageVisualization.Bar,
@@ -92,6 +92,13 @@ public sealed record LayoutProfile
             Blocks = blocks.Count == 0 ? [] : blocks.AsReadOnly()
         };
     }
+
+    private static string NormalizeProvider(string providerId) => providerId.Trim().ToLowerInvariant() switch
+    {
+        "claude" => "claude",
+        "grok" => "grok",
+        _ => "codex"
+    };
 
     private static double ClampFinite(double value, double fallback, double minimum, double maximum) => Math.Clamp(double.IsFinite(value) ? value : fallback, minimum, maximum);
 }

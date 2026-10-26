@@ -10,6 +10,11 @@ internal static class Program
 
     private static async Task<int> Main(string[] args)
     {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("USAGE_MONITOR_GROK_SCENARIO")))
+        {
+            return await FakeGrokCli.RunAsync(args);
+        }
+
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("USAGE_MONITOR_CLAUDE_SCENARIO")))
         {
             return await FakeClaudeCli.RunAsync(args);
@@ -43,7 +48,7 @@ internal static class Program
         };
 
         var failed = 0;
-        var allTests = tests.Concat(ClaudeTests.All).ToArray();
+        var allTests = tests.Concat(ClaudeTests.All).Concat(GrokTests.All).ToArray();
         foreach (var test in allTests)
         {
             try

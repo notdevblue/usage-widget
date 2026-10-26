@@ -157,7 +157,7 @@ public sealed partial class LayoutEditorWindow : Window
         widthInput.Text = Number(block.Width);
         heightInput.Text = Number(block.Height);
         kindInput.SelectedIndex = (int)block.Kind;
-        providerInput.SelectedIndex = block.ProviderId == "claude" ? 1 : 0;
+        providerInput.SelectedIndex = block.ProviderId switch { "claude" => 1, "grok" => 2, _ => 0 };
         RefreshSources(block);
         visualizationInput.SelectedIndex = (int)block.Visualization;
         labelInput.IsChecked = block.ShowLabel;
@@ -376,7 +376,12 @@ public sealed partial class LayoutEditorWindow : Window
         return UsageLayoutCanvas.TryGetWindow(context, block, out var window) ? window.Label : "지정 한도";
     }
 
-    private static string ProviderName(string providerId) => providerId == "claude" ? "Claude" : "Codex";
+    private static string ProviderName(string providerId) => providerId switch
+    {
+        "claude" => "Claude",
+        "grok" => "Grok",
+        _ => "Codex"
+    };
 
     private static string SourceName(UsageWindowSource source) => source switch
     {

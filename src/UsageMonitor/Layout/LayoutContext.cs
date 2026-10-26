@@ -23,7 +23,16 @@ public sealed record LayoutContext
         }
 
         if (!string.Equals(providerId, "codex", StringComparison.OrdinalIgnoreCase))
-            return new() { ProviderId = providerId, ProviderName = providerId == "claude" ? "Claude" : providerId };
+            return new()
+            {
+                ProviderId = providerId,
+                ProviderName = providerId.ToLowerInvariant() switch
+                {
+                    "claude" => "Claude",
+                    "grok" => "Grok",
+                    _ => providerId
+                }
+            };
 
         return new()
         {

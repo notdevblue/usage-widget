@@ -9,7 +9,7 @@ internal static class LayoutPresetFactory
 {
     internal static LayoutProfile Create(int preset, LayoutContext context)
     {
-        var providers = new[] { "codex", "claude" }.Select(context.ResolveProvider).Where(provider => provider.Windows.Count > 0).ToArray();
+        var providers = new[] { "codex", "claude", "grok" }.Select(context.ResolveProvider).Where(provider => provider.Windows.Count > 0).ToArray();
         if (providers.Length == 0)
             providers = [context.ResolveProvider("codex")];
         var blocks = new List<LayoutBlock>();

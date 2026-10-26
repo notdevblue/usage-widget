@@ -198,7 +198,7 @@ public sealed partial class LayoutEditorWindow
         stack.Children.Add(selectionTitle);
         var fields = new StackPanel();
         fields.Children.Add(ChoiceField("블록", kindInput, ["사용량", "초기화", "계정", "상태"]));
-        fields.Children.Add(ChoiceField("제공자", providerInput, ["Codex", "Claude"]));
+        fields.Children.Add(ChoiceField("제공자", providerInput, ["Codex", "Claude", "Grok"]));
         fields.Children.Add(ChoiceField("한도 선택", sourceInput, []));
         fields.Children.Add(ChoiceField("표현", visualizationInput, ["막대", "링", "숫자"]));
         var geometry = new Grid { Margin = new Thickness(0, 3, 0, 12) };
@@ -226,7 +226,11 @@ public sealed partial class LayoutEditorWindow
         providerInput.SelectionChanged += (_, _) =>
         {
             if (!synchronizing && providerInput.SelectedIndex >= 0)
-                UpdateSelected(block => block with { ProviderId = providerInput.SelectedIndex == 1 ? "claude" : "codex", WindowId = "" }, true);
+                UpdateSelected(block => block with
+                {
+                    ProviderId = providerInput.SelectedIndex switch { 1 => "claude", 2 => "grok", _ => "codex" },
+                    WindowId = ""
+                }, true);
         };
         sourceInput.SelectionChanged += (_, _) =>
         {

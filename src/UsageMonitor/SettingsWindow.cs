@@ -36,6 +36,11 @@ public sealed class SettingsWindow : Window
     private readonly TextBlock claudeConnectionDetail = new();
     private readonly Button claudeConnectButton = new();
     private readonly Button claudeExecutableButton = new();
+    private readonly TextBlock grokAccountText = new();
+    private readonly TextBlock grokAccountHint = new();
+    private readonly TextBlock grokConnectionDetail = new();
+    private readonly Button grokConnectButton = new();
+    private readonly Button grokExecutableButton = new();
     private readonly Button automaticLayoutButton = new();
     private readonly Dictionary<string, Border> swatches = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TextBlock> colorValues = new(StringComparer.Ordinal);
@@ -47,6 +52,8 @@ public sealed class SettingsWindow : Window
     public event Action ExecutableRequested = delegate { };
     public event Action ClaudeLoginRequested = delegate { };
     public event Action ClaudeExecutableRequested = delegate { };
+    public event Action GrokLoginRequested = delegate { };
+    public event Action GrokExecutableRequested = delegate { };
     public event Action QuitRequested = delegate { };
 
     public SettingsWindow(AppSettings settings, Func<LayoutContext> context)
@@ -72,6 +79,7 @@ public sealed class SettingsWindow : Window
         RefreshControls();
         UpdateConnection("", "ChatGPT로 로그인", true, false);
         UpdateClaudeConnection("", "Claude에서 로그인", true, false);
+        UpdateGrokConnection("", "Grok에서 로그인", true, false);
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape)
@@ -116,6 +124,20 @@ public sealed class SettingsWindow : Window
         claudeConnectionDetail.Visibility = detail.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    public void UpdateGrokConnection(string account, string actionText, bool canConnect, bool runtimeMissing, string detail = "")
+    {
+        grokAccountText.Text = account.Length > 0 ? account : "연결된 Grok 계정 없음";
+        grokAccountText.ToolTip = grokAccountText.Text;
+        grokConnectButton.Content = actionText.Length > 0 ? actionText : "Grok에서 로그인";
+        grokConnectButton.IsEnabled = canConnect;
+        grokAccountHint.Text = runtimeMissing ? "Grok Build를 설치하거나 실행 파일을 선택해 주세요."
+            : "이 PC의 Grok 로그인과 공유해요. 로그인은 공식 Grok 창에서 진행해요.";
+        grokExecutableButton.SetResourceReference(Control.BackgroundProperty, runtimeMissing ? "AccentBrush" : "HoverBrush");
+        grokExecutableButton.SetResourceReference(Control.ForegroundProperty, runtimeMissing ? "ActionTextBrush" : "TextBrush");
+        grokConnectionDetail.Text = detail;
+        grokConnectionDetail.Visibility = detail.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     public void UpdateSettings(AppSettings value)
     {
         settings = Normalize(value);
@@ -139,6 +161,7 @@ public sealed class SettingsWindow : Window
         body.Children.Add(BuildLayout());
         body.Children.Add(BuildConnection());
         body.Children.Add(BuildClaudeConnection());
+        body.Children.Add(BuildGrokConnection());
         root.Children.Add(new ScrollViewer
         {
             Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -318,6 +341,32 @@ public sealed class SettingsWindow : Window
         claudeExecutableButton.Content = "Claude 실행 파일 선택";
         claudeExecutableButton.Click += (_, _) => ClaudeExecutableRequested();
         section.Children.Add(claudeExecutableButton);
+        return section;
+    }
+
+    private StackPanel BuildGrokConnection()
+    {
+        var section = Section("Grok 계정");
+        grokAccountText.TextTrimming = TextTrimming.CharacterEllipsis;
+        grokAccountText.Margin = new Thickness(0, 0, 0, 4);
+        section.Children.Add(grokAccountText);
+        grokAccountHint.FontSize = 10;
+        grokAccountHint.TextWrapping = TextWrapping.Wrap;
+        grokAccountHint.Margin = new Thickness(0, 0, 0, 10);
+        grokAccountHint.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryBrush");
+        section.Children.Add(grokAccountHint);
+        grokConnectionDetail.FontSize = 11;
+        grokConnectionDetail.TextWrapping = TextWrapping.Wrap;
+        grokConnectionDetail.Margin = new Thickness(0, 0, 0, 10);
+        grokConnectionDetail.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryBrush");
+        section.Children.Add(grokConnectionDetail);
+        grokConnectButton.Margin = new Thickness(0, 0, 0, 7);
+        grokConnectButton.SetResourceReference(Control.BackgroundProperty, "HoverBrush");
+        grokConnectButton.Click += (_, _) => GrokLoginRequested();
+        section.Children.Add(grokConnectButton);
+        grokExecutableButton.Content = "Grok 실행 파일 선택";
+        grokExecutableButton.Click += (_, _) => GrokExecutableRequested();
+        section.Children.Add(grokExecutableButton);
         return section;
     }
 

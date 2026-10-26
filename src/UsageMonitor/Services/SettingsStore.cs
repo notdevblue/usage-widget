@@ -81,7 +81,8 @@ public sealed class SettingsStore
             Top = finitePosition ? settings.Top : 0,
             RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 30, 600),
             CodexPath = settings.CodexPath ?? "",
-            ClaudePath = settings.ClaudePath ?? ""
+            ClaudePath = settings.ClaudePath ?? "",
+            GrokPath = settings.GrokPath ?? ""
         };
     }
 

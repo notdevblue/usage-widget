@@ -5,6 +5,7 @@ public enum AccountKind
     SignedOut,
     ChatGpt,
     Claude,
+    Grok,
     ApiKey,
     Other
 }
