@@ -47,6 +47,7 @@ internal static class Program
             WidgetDragInputTests.Run();
             ProviderLayoutTests.Run();
             ProviderRuntimeTests.Run();
+            ProviderVisibilityTests.Run();
             Console.WriteLine($"PASS {assertions} presentation assertions; PNGs: {OutputDirectory}");
             return 0;
         }

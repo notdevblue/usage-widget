@@ -223,6 +223,7 @@ public partial class MainWindow : Window
             {
                 AlwaysOnTop = value.AlwaysOnTop, FiveHourDisplay = value.FiveHourDisplay,
                 ShowResetCountdown = value.ShowResetCountdown,
+                ShowCodex = value.ShowCodex, ShowClaude = value.ShowClaude, ShowGrok = value.ShowGrok,
                 Theme = value.Theme, CustomColors = value.CustomColors, Scale = value.Scale,
                 Opacity = value.Opacity, Layout = value.Layout
             };
@@ -373,6 +374,8 @@ public partial class MainWindow : Window
         return common.Length > 0 ? common : windows;
     }
 
+    private ProviderRuntime[] DisplayProviders() => _providers.Where(runtime => _settings.IsProviderVisible(runtime.Id)).ToArray();
+
     private void RenderSnapshots()
     {
         if (_quitting)
@@ -384,23 +387,50 @@ public partial class MainWindow : Window
             else if (!runtime.Location.Found)
                 RenderMissingRuntime(runtime);
         }
-        var custom = _settings.Layout.Enabled && _providers.Any(runtime => VisibleWindows(runtime).Length > 0);
-        _view.CustomLayoutVisible = custom;
+        var providers = DisplayProviders();
+        var layout = _settings.Layout with
+        {
+            Blocks = _settings.Layout.Blocks.Where(block => _settings.IsProviderVisible(block.ProviderId)).ToArray()
+        };
         var context = BuildLayoutContext();
-        var covered = custom ? _settings.Layout.Blocks
+        var renderableBlocks = layout.Blocks
             .Where(block => block.Kind is LayoutBlockKind.Account or LayoutBlockKind.Status || UsageLayoutCanvas.TryGetWindow(context, block, out _))
-            .Select(block => block.ProviderId).ToHashSet(StringComparer.OrdinalIgnoreCase) : [];
+            .ToArray();
+        var custom = layout.Enabled && renderableBlocks.Length > 0;
+        _view.CustomLayoutVisible = custom;
+        var covered = CoveredProviders(renderableBlocks, custom);
         _view.Providers.Clear();
-        foreach (var runtime in _providers.Where(runtime => !covered.Contains(runtime.Id)))
+        foreach (var runtime in providers.Where(runtime => !covered.Contains(runtime.Id)))
             _view.Providers.Add(runtime.View);
         _view.AutomaticLayoutVisible = _view.Providers.Count > 0;
         if (custom)
-            WidgetContent.LayoutCanvas.Render(_settings.Layout, context);
-        var trayText = string.Join(" · ", _providers.Select(runtime => runtime.View.Metrics.Count > 0
-            ? $"{runtime.Name} {runtime.View.Metrics[0].Label} {runtime.View.Metrics[0].Amount}%"
-            : $"{runtime.Name} {runtime.View.EmptyTitle}"));
-        _tray.Text = trayText.Length > 63 ? trayText[..63] : trayText;
+            WidgetContent.LayoutCanvas.Render(layout, context);
+        _tray.Text = TrayText(providers);
         UpdateView();
+    }
+
+    private static HashSet<string> CoveredProviders(LayoutBlock[] renderableBlocks, bool custom)
+    {
+        if (custom)
+            return renderableBlocks.Select(block => block.ProviderId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string TrayText(ProviderRuntime[] providers)
+    {
+        if (providers.Length == 0)
+            return "표시할 서비스 없음";
+        var text = string.Join(" · ", providers.Select(ProviderTrayText));
+        if (text.Length > 63)
+            return text[..63];
+        return text;
+    }
+
+    private static string ProviderTrayText(ProviderRuntime runtime)
+    {
+        if (runtime.View.Metrics.Count > 0)
+            return $"{runtime.Name} {runtime.View.Metrics[0].Label} {runtime.View.Metrics[0].Amount}%";
+        return $"{runtime.Name} {runtime.View.EmptyTitle}";
     }
 
     private void RenderProvider(ProviderRuntime runtime)
@@ -459,30 +489,46 @@ public partial class MainWindow : Window
             view.ShowResetCountdown = _settings.ShowResetCountdown;
             var allMetrics = VisibleWindows(runtime).Select(window => new UsageMetric(window, DateTimeOffset.Now,
                 BrushResource("AccentBrush"), BrushResource("WarningBrush"), BrushResource("ErrorBrush"))).ToArray();
-            var limits = allMetrics.Length > 0
-                ? string.Join("\n", allMetrics.Select(metric => $"{metric.Label}: {metric.Amount}% 남음 · {metric.Reset}"))
-                : view.EmptyBody;
+            var limits = ProviderLimits(allMetrics, view.EmptyBody);
             view.HoverText = $"{runtime.Name} {view.Plan}\n{limits}\n{view.Status}";
             if (view.Detail.Length > 0)
                 view.HoverText += $"\n{view.Detail}";
             view.Update();
         }
-        _view.Stale = _providers.Any(runtime => runtime.View.Stale);
-        _view.HoverText = string.Join("\n\n", _providers.Select(runtime => runtime.View.HoverText));
+        var providers = DisplayProviders();
+        _view.NoProvidersVisible = providers.Length == 0;
+        _view.Stale = providers.Any(runtime => runtime.View.Stale);
+        _view.HoverText = string.Join("\n\n", providers.Select(runtime => runtime.View.HoverText));
+        if (_view.NoProvidersVisible)
+            _view.HoverText = "마우스 오른쪽 버튼 → 설정에서 표시할 서비스를 선택해주세요.";
         if (_settingsError.Length > 0)
             _view.HoverText += $"\n{_settingsError}";
         foreach (var dialog in _dialogs.Values)
         {
             var codex = _providers[0].View;
             var claude = _providers[1].View;
-            dialog.UpdateConnection(codex.Stale ? $"{codex.Account} (마지막 조회)" : codex.Account, codex.ActionText, !_preview && !_providers[0].Transitioning, codex.RuntimeMissing, codex.Detail);
-            dialog.UpdateClaudeConnection(claude.Stale ? $"{claude.Account} (마지막 조회)" : claude.Account, claude.ActionText,
+            dialog.UpdateConnection(ConnectionAccount(codex), codex.ActionText, !_preview && !_providers[0].Transitioning, codex.RuntimeMissing, codex.Detail);
+            dialog.UpdateClaudeConnection(ConnectionAccount(claude), claude.ActionText,
                 !_preview && !_providers[1].Transitioning && !_providers[1].LoginPending, claude.RuntimeMissing, claude.Detail);
             var grokRuntime = Runtime("grok");
             var grok = grokRuntime.View;
-            dialog.UpdateGrokConnection(grok.Stale ? $"{grok.Account} (마지막 조회)" : grok.Account, grok.ActionText,
+            dialog.UpdateGrokConnection(ConnectionAccount(grok), grok.ActionText,
                 !_preview && !grokRuntime.Transitioning && !grokRuntime.LoginPending, grok.RuntimeMissing, grok.Detail);
         }
+    }
+
+    private static string ProviderLimits(UsageMetric[] metrics, string emptyBody)
+    {
+        if (metrics.Length > 0)
+            return string.Join("\n", metrics.Select(metric => $"{metric.Label}: {metric.Amount}% 남음 · {metric.Reset}"));
+        return emptyBody;
+    }
+
+    private static string ConnectionAccount(WidgetViewModel view)
+    {
+        if (view.Stale)
+            return $"{view.Account} (마지막 조회)";
+        return view.Account;
     }
 
     private async Task ConnectAsync(ProviderRuntime runtime)

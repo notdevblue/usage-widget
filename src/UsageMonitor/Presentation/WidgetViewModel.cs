@@ -178,6 +178,13 @@ public sealed class WidgetViewModel : DependencyObject
         set => SetValue(AutomaticLayoutVisibleProperty, value);
     }
 
+    public static readonly DependencyProperty NoProvidersVisibleProperty = DependencyProperty.Register(nameof(NoProvidersVisible), typeof(bool), typeof(WidgetViewModel), new PropertyMetadata(false));
+    public bool NoProvidersVisible
+    {
+        get => (bool)GetValue(NoProvidersVisibleProperty);
+        set => SetValue(NoProvidersVisibleProperty, value);
+    }
+
     public static readonly DependencyProperty ScaleTextProperty = DependencyProperty.Register(nameof(ScaleText), typeof(string), typeof(WidgetViewModel), new PropertyMetadata("100%"));
     public string ScaleText
     {

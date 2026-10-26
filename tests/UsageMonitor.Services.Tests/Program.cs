@@ -18,6 +18,7 @@ try
     TestSettings();
     TestThemeCatalog();
     AppearanceTests.Run(temporaryDirectory, Assert);
+    ProviderVisibilityTests.Run(temporaryDirectory, Assert);
     RefreshScheduleTests.Run(Assert);
     await CodexResetNewsTests.RunAsync(Assert);
     TestLocator();

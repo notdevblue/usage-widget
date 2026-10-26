@@ -17,6 +17,10 @@
       <StackPanel>
         <TextBlock Text="미리보기" FontSize="8" Foreground="{DynamicResource SecondaryBrush}" Margin="0,0,0,3"
                    Visibility="{Binding Preview, Converter={StaticResource VisibleWhenTrue}}" />
+        <TextBlock Text="표시할 서비스 없음" FontSize="9" Height="18" VerticalAlignment="Center"
+                   Foreground="{DynamicResource SecondaryBrush}" TextWrapping="NoWrap"
+                   ToolTip="마우스 오른쪽 버튼 → 설정에서 표시할 서비스를 선택해주세요."
+                   Visibility="{Binding NoProvidersVisible, Converter={StaticResource VisibleWhenTrue}}" />
         <layout:UsageLayoutCanvas x:Name="CustomLayoutCanvas"
                                   Visibility="{Binding CustomLayoutVisible, Converter={StaticResource VisibleWhenTrue}}" />
         <ItemsControl ItemsSource="{Binding Providers}" Visibility="{Binding AutomaticLayoutVisible, Converter={StaticResource VisibleWhenTrue}}">

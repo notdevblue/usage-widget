@@ -19,6 +19,9 @@ public sealed class SettingsWindow : Window
     private readonly CheckBox pinOption = new();
     private readonly ComboBox fiveHourOption = new();
     private readonly CheckBox resetCountdownOption = new();
+    private readonly CheckBox codexDisplayOption = new();
+    private readonly CheckBox claudeDisplayOption = new();
+    private readonly CheckBox grokDisplayOption = new();
     private readonly ComboBox themeOption = new();
     private readonly Slider scaleOption = new();
     private readonly Slider opacityOption = new();
@@ -201,6 +204,9 @@ public sealed class SettingsWindow : Window
         pinOption.Unchecked += (_, _) => ChangePin();
         AutomationProperties.SetName(pinOption, "항상 위에 표시");
         section.Children.Add(pinOption);
+        AddProviderDisplayOption(section, codexDisplayOption, "Codex 표시");
+        AddProviderDisplayOption(section, claudeDisplayOption, "Claude 표시");
+        AddProviderDisplayOption(section, grokDisplayOption, "Grok 표시");
         AddChoices(fiveHourOption, ["자동 표시", "숨기기"], "5시간 한도 표시");
         fiveHourOption.SelectionChanged += (_, _) =>
         {
@@ -229,6 +235,27 @@ public sealed class SettingsWindow : Window
         section.Children.Add(SliderRow("크기", scaleOption, scaleValue));
         section.Children.Add(SliderRow("불투명도", opacityOption, opacityValue));
         return section;
+    }
+
+    private void AddProviderDisplayOption(StackPanel section, CheckBox option, string name)
+    {
+        option.Content = name;
+        option.Margin = new Thickness(0, 0, 0, 12);
+        option.Checked += (_, _) => ChangeProviderDisplay();
+        option.Unchecked += (_, _) => ChangeProviderDisplay();
+        AutomationProperties.SetName(option, name);
+        section.Children.Add(option);
+    }
+
+    private void ChangeProviderDisplay()
+    {
+        if (synchronizing == false)
+            Publish(settings with
+            {
+                ShowCodex = codexDisplayOption.IsChecked == true,
+                ShowClaude = claudeDisplayOption.IsChecked == true,
+                ShowGrok = grokDisplayOption.IsChecked == true
+            });
     }
 
     private StackPanel BuildAppearance()
@@ -397,18 +424,35 @@ public sealed class SettingsWindow : Window
         pinOption.IsChecked = settings.AlwaysOnTop;
         fiveHourOption.SelectedIndex = (int)settings.FiveHourDisplay;
         resetCountdownOption.IsChecked = settings.ShowResetCountdown;
+        codexDisplayOption.IsChecked = settings.ShowCodex;
+        claudeDisplayOption.IsChecked = settings.ShowClaude;
+        grokDisplayOption.IsChecked = settings.ShowGrok;
         themeOption.SelectedIndex = (int)settings.Theme;
         scaleOption.Value = settings.Scale * 100;
         opacityOption.Value = settings.Opacity * 100;
         scaleValue.Text = $"{settings.Scale * 100:0}%";
         opacityValue.Text = $"{settings.Opacity * 100:0}%";
-        layoutSummary.Text = settings.Layout.Enabled ? $"사용자 배치 · {settings.Layout.Blocks.Count}개 블록" : "자동 배치";
+        layoutSummary.Text = LayoutDescription();
         automaticLayoutButton.IsEnabled = settings.Layout.Enabled;
-        var colors = settings.Theme == WidgetTheme.Custom ? settings.CustomColors : CurrentColors();
+        var colors = SelectedColors();
         UpdateSwatch("Background", colors.Background);
         UpdateSwatch("Foreground", colors.Foreground);
         UpdateSwatch("Accent", colors.Accent);
         synchronizing = false;
+    }
+
+    private string LayoutDescription()
+    {
+        if (settings.Layout.Enabled)
+            return $"사용자 배치 · {settings.Layout.Blocks.Count}개 블록";
+        return "자동 배치";
+    }
+
+    private ThemeColors SelectedColors()
+    {
+        if (settings.Theme == WidgetTheme.Custom)
+            return settings.CustomColors;
+        return CurrentColors();
     }
 
     private void AddColorButton(Grid parent, string channel, string title, int column)
