@@ -1,21 +1,15 @@
 using System;
-using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
-using Microsoft.Win32;
-using UsageMonitor.Layout;
 using UsageMonitor.Services;
-using Forms = System.Windows.Forms;
 
 namespace UsageMonitor;
 
 public sealed class SettingsWindow : Window
 {
-    private readonly Func<LayoutContext> getContext;
     private readonly CheckBox pinOption = new();
     private readonly CheckBox startupOption = new() { IsEnabled = false };
     private readonly ComboBox fiveHourOption = new();
@@ -28,7 +22,6 @@ public sealed class SettingsWindow : Window
     private readonly Slider opacityOption = new();
     private readonly TextBlock scaleValue = new();
     private readonly TextBlock opacityValue = new();
-    private readonly TextBlock layoutSummary = new();
     private readonly TextBlock accountText = new();
     private readonly TextBlock accountHint = new();
     private readonly TextBlock connectionDetail = new();
@@ -45,9 +38,6 @@ public sealed class SettingsWindow : Window
     private readonly TextBlock grokConnectionDetail = new();
     private readonly Button grokConnectButton = new();
     private readonly Button grokExecutableButton = new();
-    private readonly Button automaticLayoutButton = new();
-    private readonly Dictionary<string, Border> swatches = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, TextBlock> colorValues = new(StringComparer.Ordinal);
     private AppSettings settings;
     private bool synchronizing;
 
@@ -61,11 +51,9 @@ public sealed class SettingsWindow : Window
     public event Action GrokExecutableRequested = delegate { };
     public event Action QuitRequested = delegate { };
 
-    public SettingsWindow(AppSettings settings, Func<LayoutContext> context)
+    public SettingsWindow(AppSettings settings)
     {
-        ArgumentNullException.ThrowIfNull(context);
         this.settings = Normalize(settings);
-        getContext = context;
         Title = "Usage Monitor 설정";
         Width = 390;
         MinWidth = 360;
@@ -78,7 +66,7 @@ public sealed class SettingsWindow : Window
         UseLayoutRounding = true;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
         FontSize = 12;
-        SetResourceReference(BackgroundProperty, "CardBrush");
+        SetResourceReference(BackgroundProperty, "SurfaceBrush");
         SetResourceReference(ForegroundProperty, "TextBrush");
         Content = BuildWindow();
         RefreshControls();
@@ -161,7 +149,7 @@ public sealed class SettingsWindow : Window
     private Grid BuildWindow()
     {
         var root = new Grid();
-        root.SetResourceReference(Panel.BackgroundProperty, "CardBrush");
+        root.SetResourceReference(Panel.BackgroundProperty, "SurfaceBrush");
         root.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new() { Height = GridLength.Auto });
         root.RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -172,7 +160,6 @@ public sealed class SettingsWindow : Window
         body.Children.Add(intro);
         body.Children.Add(BuildDisplay());
         body.Children.Add(BuildAppearance());
-        body.Children.Add(BuildLayout());
         body.Children.Add(BuildConnection());
         body.Children.Add(BuildClaudeConnection());
         body.Children.Add(BuildGrokConnection());
@@ -283,62 +270,18 @@ public sealed class SettingsWindow : Window
 
     private StackPanel BuildAppearance()
     {
-        var section = Section("색상");
-        AddChoices(themeOption, ["시스템 설정", "라이트", "다크", "미드나이트", "민트", "라벤더", "샌드", "직접 선택"], "화면 테마");
+        var section = Section("외형");
+        AddChoices(themeOption, ["시스템 설정", "라이트", "다크"], "화면 테마");
         themeOption.SelectionChanged += (_, _) =>
         {
-            if (!synchronizing && themeOption.SelectedIndex >= 0)
+            if (synchronizing == false && themeOption.SelectedIndex >= 0)
                 Publish(settings with { Theme = (WidgetTheme)themeOption.SelectedIndex });
         };
         section.Children.Add(Row("화면 테마", themeOption));
-        var colors = new Grid { Margin = new Thickness(-3, 0, -3, 10) };
-        for (var index = 0; index < 3; index++)
-            colors.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        AddColorButton(colors, "Background", "바탕", 0);
-        AddColorButton(colors, "Foreground", "글자", 1);
-        AddColorButton(colors, "Accent", "강조", 2);
-        section.Children.Add(colors);
-        var files = new Grid();
-        files.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        files.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        var import = Button("테마 불러오기", ImportAppearance);
-        import.Margin = new Thickness(0, 0, 4, 0);
-        import.SetResourceReference(Control.BackgroundProperty, "HoverBrush");
-        files.Children.Add(import);
-        var export = Button("테마 내보내기", ExportAppearance);
-        export.Margin = new Thickness(4, 0, 0, 0);
-        export.SetResourceReference(Control.BackgroundProperty, "HoverBrush");
-        Grid.SetColumn(export, 1);
-        files.Children.Add(export);
-        section.Children.Add(files);
         var reset = Button("외형 기본값으로", ResetAppearance);
-        reset.Margin = new Thickness(0, 5, 0, 0);
         reset.HorizontalAlignment = HorizontalAlignment.Left;
-        reset.FontSize = 10;
         reset.SetResourceReference(Control.ForegroundProperty, "SecondaryBrush");
         section.Children.Add(reset);
-        return section;
-    }
-
-    private StackPanel BuildLayout()
-    {
-        var section = Section("레이아웃");
-        layoutSummary.FontSize = 11;
-        layoutSummary.Margin = new Thickness(0, 0, 0, 8);
-        layoutSummary.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryBrush");
-        section.Children.Add(layoutSummary);
-        var actions = new Grid();
-        actions.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        actions.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        var edit = Button("레이아웃 편집", EditLayout);
-        edit.SetResourceReference(Control.BackgroundProperty, "HoverBrush");
-        actions.Children.Add(edit);
-        automaticLayoutButton.Content = "자동 배치로";
-        automaticLayoutButton.Margin = new Thickness(7, 0, 0, 0);
-        automaticLayoutButton.Click += (_, _) => Publish(settings with { Layout = settings.Layout with { Enabled = false } }, "자동 배치로 전환했어요.");
-        Grid.SetColumn(automaticLayoutButton, 1);
-        actions.Children.Add(automaticLayoutButton);
-        section.Children.Add(actions);
         return section;
     }
 
@@ -455,156 +398,33 @@ public sealed class SettingsWindow : Window
         opacityOption.Value = settings.Opacity * 100;
         scaleValue.Text = $"{settings.Scale * 100:0}%";
         opacityValue.Text = $"{settings.Opacity * 100:0}%";
-        layoutSummary.Text = LayoutDescription();
-        automaticLayoutButton.IsEnabled = settings.Layout.Enabled;
-        var colors = SelectedColors();
-        UpdateSwatch("Background", colors.Background);
-        UpdateSwatch("Foreground", colors.Foreground);
-        UpdateSwatch("Accent", colors.Accent);
         synchronizing = false;
-    }
-
-    private string LayoutDescription()
-    {
-        if (settings.Layout.Enabled)
-            return $"사용자 배치 · {settings.Layout.Blocks.Count}개 블록";
-        return "자동 배치";
-    }
-
-    private ThemeColors SelectedColors()
-    {
-        if (settings.Theme == WidgetTheme.Custom)
-            return settings.CustomColors;
-        return CurrentColors();
-    }
-
-    private void AddColorButton(Grid parent, string channel, string title, int column)
-    {
-        var content = new StackPanel();
-        var swatch = new Border { Height = 15, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 0, 5) };
-        swatch.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
-        swatch.BorderThickness = new Thickness(1);
-        swatches.Add(channel, swatch);
-        content.Children.Add(swatch);
-        var name = Text(title, 10, false);
-        name.HorizontalAlignment = HorizontalAlignment.Center;
-        content.Children.Add(name);
-        var value = Text("", 9);
-        value.HorizontalAlignment = HorizontalAlignment.Center;
-        colorValues.Add(channel, value);
-        content.Children.Add(value);
-        var button = Button("", () => ChooseColor(channel));
-        button.Content = content;
-        button.Padding = new Thickness(8);
-        button.Margin = new Thickness(3, 0, 3, 0);
-        button.SetResourceReference(Control.BackgroundProperty, "HoverBrush");
-        AutomationProperties.SetName(button, $"{title} 색상 선택");
-        Grid.SetColumn(button, column);
-        parent.Children.Add(button);
-    }
-
-    private void UpdateSwatch(string channel, string value)
-    {
-        swatches[channel].Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(value));
-        colorValues[channel].Text = value;
-    }
-
-    private void ChooseColor(string channel)
-    {
-        var colors = CurrentColors();
-        var initial = channel == "Background" ? colors.Background : channel == "Foreground" ? colors.Foreground : colors.Accent;
-        using var dialog = new Forms.ColorDialog
-        {
-            Color = System.Drawing.ColorTranslator.FromHtml(initial), FullOpen = true
-        };
-        if (dialog.ShowDialog(new NativeDialogOwner(new WindowInteropHelper(this).EnsureHandle())) != Forms.DialogResult.OK)
-            return;
-        var selected = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
-        colors = channel == "Background" ? colors with { Background = selected }
-            : channel == "Foreground" ? colors with { Foreground = selected } : colors with { Accent = selected };
-        Publish(settings with { Theme = WidgetTheme.Custom, CustomColors = colors }, "선택한 색상을 적용했어요.");
-    }
-
-    private ThemeColors CurrentColors() => new()
-    {
-        Background = ColorHex("CardBrush"), Foreground = ColorHex("TextBrush"), Accent = ColorHex("AccentBrush")
-    };
-
-    private string ColorHex(string key)
-    {
-        var color = FindResource(key) is SolidColorBrush brush ? brush.Color : Colors.Gray;
-        return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-    }
-
-    private void EditLayout()
-    {
-        var editor = new LayoutEditorWindow(settings.Layout, getContext()) { Owner = this };
-        if (editor.ShowDialog() == true)
-            Publish(settings with { Layout = editor.Result }, "레이아웃을 적용했어요.");
-    }
-
-    private void ExportAppearance()
-    {
-        var dialog = new SaveFileDialog
-        {
-            Title = "테마 내보내기", Filter = "Usage Monitor 테마 (*.json)|*.json",
-            FileName = "My-UsageMonitor.theme.json", AddExtension = true, DefaultExt = ".json"
-        };
-        if (dialog.ShowDialog(this) != true)
-            return;
-        var profile = new AppearanceProfile
-        {
-            Theme = settings.Theme, CustomColors = settings.CustomColors, Scale = settings.Scale,
-            Opacity = settings.Opacity, Layout = settings.Layout
-        };
-        ShowFeedback(new AppearanceProfileStore().TryExport(dialog.FileName, profile)
-            ? "색상·크기·배치를 테마 파일로 저장했어요." : "테마 파일을 저장하지 못했어요.");
-    }
-
-    private void ImportAppearance()
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "테마 불러오기", Filter = "Usage Monitor 테마 (*.json)|*.json", CheckFileExists = true
-        };
-        if (dialog.ShowDialog(this) != true)
-            return;
-        if (!new AppearanceProfileStore().TryImport(dialog.FileName, out var profile))
-        {
-            ShowFeedback("이 테마 파일을 읽을 수 없어요. 지원하는 형식인지 확인해 주세요.");
-            return;
-        }
-
-        Publish(settings with
-        {
-            Theme = profile.Theme, CustomColors = profile.CustomColors, Scale = profile.Scale,
-            Opacity = profile.Opacity, Layout = profile.Layout
-        }, "테마를 불러왔어요.");
     }
 
     private void ResetAppearance() => Publish(settings with
     {
-        Theme = WidgetTheme.System, CustomColors = new(), Scale = 1, Opacity = 1, Layout = new()
+        Theme = WidgetTheme.System, Scale = 1, Opacity = 1
     }, "외형을 기본값으로 되돌렸어요.");
 
     private static AppSettings Normalize(AppSettings settings)
     {
         var appearance = AppearanceProfile.Normalize(new()
         {
-            Theme = settings.Theme, CustomColors = settings.CustomColors, Scale = settings.Scale,
-            Opacity = settings.Opacity, Layout = settings.Layout
+            Theme = settings.Theme, Scale = settings.Scale, Opacity = settings.Opacity
         });
+        var fiveHourDisplay = settings.FiveHourDisplay;
+        if (Enum.IsDefined(fiveHourDisplay) == false)
+            fiveHourDisplay = FiveHourDisplay.Automatic;
         return settings with
         {
-            FiveHourDisplay = Enum.IsDefined(settings.FiveHourDisplay) ? settings.FiveHourDisplay : FiveHourDisplay.Automatic,
-            Theme = appearance.Theme, CustomColors = appearance.CustomColors, Scale = appearance.Scale,
-            Opacity = appearance.Opacity, Layout = appearance.Layout
+            FiveHourDisplay = fiveHourDisplay, Theme = appearance.Theme,
+            Scale = appearance.Scale, Opacity = appearance.Opacity
         };
     }
 
     private static StackPanel Section(string title)
     {
-        var section = new StackPanel { Margin = new Thickness(0, 0, 0, 19) };
+        var section = new StackPanel { Margin = new Thickness(0, 0, 0, 26) };
         var heading = Text(title, 13, false);
         heading.FontWeight = FontWeights.SemiBold;
         heading.Margin = new Thickness(0, 0, 0, 11);
@@ -660,7 +480,10 @@ public sealed class SettingsWindow : Window
     private static TextBlock Text(string value, double size, bool secondary = true)
     {
         var text = new TextBlock { Text = value, FontSize = size };
-        text.SetResourceReference(TextBlock.ForegroundProperty, secondary ? "SecondaryBrush" : "TextBrush");
+        if (secondary)
+            text.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryBrush");
+        else
+            text.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
         return text;
     }
 
@@ -671,8 +494,4 @@ public sealed class SettingsWindow : Window
         return button;
     }
 
-    private sealed class NativeDialogOwner(IntPtr handle) : Forms.IWin32Window
-    {
-        public IntPtr Handle { get; } = handle;
-    }
 }

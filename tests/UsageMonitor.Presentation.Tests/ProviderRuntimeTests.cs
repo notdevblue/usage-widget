@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using UsageMonitor.Core;
-using UsageMonitor.Layout;
 using UsageMonitor.Services;
 
 namespace UsageMonitor.Presentation.Tests;
@@ -25,7 +24,7 @@ internal static class ProviderRuntimeTests
         FailurePreservesOtherProvider();
         RetiredGenerationCannotPublish(false);
         RetiredGenerationCannotPublish(true);
-        MissingCustomQuotaKeepsStatusRow();
+        MissingQuotaKeepsStatusRow();
         ClaudeSummaryKeepsModelDetails();
         CachedUsagePreservesStatus();
         Console.WriteLine($"PASS {assertions} provider runtime assertions");
@@ -42,10 +41,24 @@ internal static class ProviderRuntimeTests
         fixture.Install("claude", new("claude", _ => Task.FromResult(snapshot)));
         var runtime = fixture.Runtime("claude");
         PumpTask(fixture.InvokeTask("RefreshProviderAsync", runtime));
-        Check(View(runtime).Stale && View(runtime).Metrics.Single().Amount == "34", "Cached fallback must retain its warning state and values.");
-        Check(View(runtime).Status.Contains("20분 전") && View(runtime).Detail == snapshot.StatusDetail, "Cached fallback must retain its actual age and retry detail.");
+        var root = GetField<WidgetViewModel>(fixture.Window, "_view");
+        var view = View(runtime);
+        Check(ReferenceEquals(view, root.Providers.Single(provider => provider.ProviderId == "claude")),
+            "The widget must retain the provider model that owns its live quota values and diagnostics.");
+        Check(view.Stale && view.Metrics.Single().Amount == "34", "Cached fallback must retain its warning state and values.");
+        Check(view.Status.Contains("20분 전") && view.Detail == snapshot.StatusDetail, "Cached fallback must retain its actual age and retry detail.");
+        var metric = view.Metrics.Single();
+        Check(view.HoverText.Contains("20분 전", StringComparison.Ordinal) && view.HoverText.Contains(snapshot.StatusDetail, StringComparison.Ordinal)
+            && view.HoverText.Contains(metric.Reset, StringComparison.Ordinal),
+            "Provider tooltips must expose quota reset timing, stale age, and retry feedback together.");
+        view.Detail = "새 연결 오류";
+        fixture.Invoke("UpdateView");
+        Check(ReferenceEquals(metric, view.Metrics.Single()) && view.HoverText.Contains("새 연결 오류", StringComparison.Ordinal)
+            && !view.HoverText.Contains(snapshot.StatusDetail, StringComparison.Ordinal),
+            "Updating provider feedback must refresh its tooltip without another usage read.");
         snapshot = snapshot with { Windows = [], ObservedAt = DateTimeOffset.MinValue };
         PumpTask(fixture.InvokeTask("RefreshProviderAsync", runtime));
+        Check(root.Providers.Single(provider => provider.ProviderId == "claude").Metrics.Count == 0, "Clearing provider quotas must remove its former usage bars.");
         Check(View(runtime).EmptyTitle == "사용량 조회 대기", "Cooldown without cached meters must not claim the account lacks quotas.");
         Check(View(runtime).Status.Contains("갱신 시각 미확인"), "Unknown freshness must not be shown as a recent sync.");
     }
@@ -174,26 +187,16 @@ internal static class ProviderRuntimeTests
         Check(!View(runtime).Stale && GetProperty<int>(runtime, "Failures") == 0 && View(runtime).Detail.Length == 0, "Retired request failures must not mark the new account stale or start backoff.");
     }
 
-    private static void MissingCustomQuotaKeepsStatusRow()
+    private static void MissingQuotaKeepsStatusRow()
     {
         using var fixture = new Fixture();
         fixture.Install("codex", new("codex", _ => Task.FromResult(Snapshot("codex", 64))));
         fixture.Install("claude", new("claude", _ => Task.FromResult(Snapshot("claude", 0) with { Windows = [] })));
-        var settings = GetField<AppSettings>(fixture.Window, "_settings");
-        SetField(fixture.Window, "_settings", settings with
-        {
-            Layout = new()
-            {
-                Enabled = true,
-                Blocks = [new() { ProviderId = "claude", Kind = LayoutBlockKind.Usage, Source = UsageWindowSource.Weekly, Height = 100 }]
-            }
-        });
         PumpTask(fixture.InvokeTask("RefreshAsync", true));
         fixture.Invoke("RenderSnapshots");
         var view = GetField<WidgetViewModel>(fixture.Window, "_view");
-        Check(view.Providers.Any(provider => provider.ProviderId == "claude"), "An unrenderable custom Claude quota must retain Claude's automatic status row.");
-        Check(view.Providers.Any(provider => provider.ProviderId == "codex" && provider.Metrics.Count == 1), "A custom Claude-only layout must leave Codex metrics visible.");
-        Check(view.AutomaticLayoutVisible, "Missing custom quota data must not suppress the automatic provider rows.");
+        Check(view.Providers.Any(provider => provider.ProviderId == "claude"), "A Claude account without quotas must retain its status row.");
+        Check(view.Providers.Any(provider => provider.ProviderId == "codex" && provider.Metrics.Count == 1), "A quota-free Claude account must leave Codex metrics visible.");
     }
 
     private static void ClaudeSummaryKeepsModelDetails()
@@ -212,8 +215,6 @@ internal static class ProviderRuntimeTests
         PumpTask(fixture.InvokeTask("RefreshAsync", true));
         var view = View(fixture.Runtime("claude"));
         Check(view.Metrics.Count == 2 && view.Metrics.Select(metric => metric.Label).SequenceEqual(new[] { "5시간", "주간" }), "Claude's compact summary must show the shared five-hour and weekly limits only.");
-        var context = (LayoutContext)fixture.Invoke("BuildLayoutContext");
-        Check(context.ResolveProvider("claude").Windows.Count == 3, "Custom layouts must retain every Claude quota window.");
         Check(view.HoverText.Contains("Sonnet 주간", StringComparison.Ordinal) && view.HoverText.Contains("49%", StringComparison.Ordinal), "Claude's tooltip must retain the model-scoped quota and its remaining amount.");
     }
 

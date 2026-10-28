@@ -9,9 +9,9 @@ public sealed class SettingsStore
 {
     public SettingsStore(string baseDirectory = "")
     {
-        var directory = string.IsNullOrWhiteSpace(baseDirectory)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UsageMonitor")
-            : baseDirectory;
+        var directory = baseDirectory;
+        if (string.IsNullOrWhiteSpace(directory))
+            directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UsageMonitor");
         FilePath = Path.Combine(Path.GetFullPath(directory), "settings.json");
     }
 
@@ -63,27 +63,33 @@ public sealed class SettingsStore
         var appearance = AppearanceProfile.Normalize(new()
         {
             Theme = settings.Theme,
-            CustomColors = settings.CustomColors,
             Scale = settings.Scale,
-            Opacity = settings.Opacity,
-            Layout = settings.Layout
+            Opacity = settings.Opacity
         });
+        var fiveHourDisplay = settings.FiveHourDisplay;
+        if (!Enum.IsDefined(fiveHourDisplay))
+            fiveHourDisplay = FiveHourDisplay.Automatic;
         return settings with
         {
-            FiveHourDisplay = Enum.IsDefined(settings.FiveHourDisplay) ? settings.FiveHourDisplay : FiveHourDisplay.Automatic,
+            FiveHourDisplay = fiveHourDisplay,
             Theme = appearance.Theme,
-            CustomColors = appearance.CustomColors,
             Scale = appearance.Scale,
             Opacity = appearance.Opacity,
-            Layout = appearance.Layout,
             HasPosition = settings.HasPosition && finitePosition,
-            Left = finitePosition ? settings.Left : 0,
-            Top = finitePosition ? settings.Top : 0,
+            Left = NormalizePosition(settings.Left, finitePosition),
+            Top = NormalizePosition(settings.Top, finitePosition),
             RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 30, 600),
             CodexPath = settings.CodexPath ?? "",
             ClaudePath = settings.ClaudePath ?? "",
             GrokPath = settings.GrokPath ?? ""
         };
+    }
+
+    private static double NormalizePosition(double position, bool finitePosition)
+    {
+        if (finitePosition)
+            return position;
+        return 0;
     }
 
     private static void TryDelete(string path)

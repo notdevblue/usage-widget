@@ -15,7 +15,6 @@ public sealed class WidgetViewModel : DependencyObject
 
     public string ProviderId { get; init; } = "codex";
     public string ProviderName { get; init; } = "Codex";
-    public string ProviderLabel => $"{ProviderName} ·";
 
     public static readonly DependencyProperty PlanProperty = DependencyProperty.Register(nameof(Plan), typeof(string), typeof(WidgetViewModel), new PropertyMetadata(""));
     public string Plan
@@ -164,60 +163,11 @@ public sealed class WidgetViewModel : DependencyObject
         set => SetValue(StatusBrushProperty, value);
     }
 
-    public static readonly DependencyProperty CustomLayoutVisibleProperty = DependencyProperty.Register(nameof(CustomLayoutVisible), typeof(bool), typeof(WidgetViewModel), new PropertyMetadata(false));
-    public bool CustomLayoutVisible
-    {
-        get => (bool)GetValue(CustomLayoutVisibleProperty);
-        set => SetValue(CustomLayoutVisibleProperty, value);
-    }
-
-    public static readonly DependencyProperty AutomaticLayoutVisibleProperty = DependencyProperty.Register(nameof(AutomaticLayoutVisible), typeof(bool), typeof(WidgetViewModel), new PropertyMetadata(true));
-    public bool AutomaticLayoutVisible
-    {
-        get => (bool)GetValue(AutomaticLayoutVisibleProperty);
-        set => SetValue(AutomaticLayoutVisibleProperty, value);
-    }
-
     public static readonly DependencyProperty NoProvidersVisibleProperty = DependencyProperty.Register(nameof(NoProvidersVisible), typeof(bool), typeof(WidgetViewModel), new PropertyMetadata(false));
     public bool NoProvidersVisible
     {
         get => (bool)GetValue(NoProvidersVisibleProperty);
         set => SetValue(NoProvidersVisibleProperty, value);
-    }
-
-    public static readonly DependencyProperty ScaleTextProperty = DependencyProperty.Register(nameof(ScaleText), typeof(string), typeof(WidgetViewModel), new PropertyMetadata("100%"));
-    public string ScaleText
-    {
-        get => (string)GetValue(ScaleTextProperty);
-        set => SetValue(ScaleTextProperty, value);
-    }
-
-    public static readonly DependencyProperty OpacityTextProperty = DependencyProperty.Register(nameof(OpacityText), typeof(string), typeof(WidgetViewModel), new PropertyMetadata("100%"));
-    public string OpacityText
-    {
-        get => (string)GetValue(OpacityTextProperty);
-        set => SetValue(OpacityTextProperty, value);
-    }
-
-    public static readonly DependencyProperty BackgroundSwatchProperty = DependencyProperty.Register(nameof(BackgroundSwatch), typeof(Brush), typeof(WidgetViewModel), new PropertyMetadata(Brushes.White));
-    public Brush BackgroundSwatch
-    {
-        get => (Brush)GetValue(BackgroundSwatchProperty);
-        set => SetValue(BackgroundSwatchProperty, value);
-    }
-
-    public static readonly DependencyProperty ForegroundSwatchProperty = DependencyProperty.Register(nameof(ForegroundSwatch), typeof(Brush), typeof(WidgetViewModel), new PropertyMetadata(Brushes.Black));
-    public Brush ForegroundSwatch
-    {
-        get => (Brush)GetValue(ForegroundSwatchProperty);
-        set => SetValue(ForegroundSwatchProperty, value);
-    }
-
-    public static readonly DependencyProperty AccentSwatchProperty = DependencyProperty.Register(nameof(AccentSwatch), typeof(Brush), typeof(WidgetViewModel), new PropertyMetadata(Brushes.Green));
-    public Brush AccentSwatch
-    {
-        get => (Brush)GetValue(AccentSwatchProperty);
-        set => SetValue(AccentSwatchProperty, value);
     }
 
     public static readonly DependencyProperty HoverTextProperty = DependencyProperty.Register(nameof(HoverText), typeof(string), typeof(WidgetViewModel), new PropertyMetadata("계정 확인 중"));
@@ -291,13 +241,17 @@ public sealed class WidgetViewModel : DependencyObject
         HasMetrics = Metrics.Count > 0;
         EmptyVisible = !HasMetrics;
         DetailVisible = Detail.Length > 0;
-        ResetSummary = HasMetrics ? "초기화 · " + string.Join(" · ", Metrics.Select(metric => $"{metric.Label} {metric.ResetCountdown}")) : "";
+        if (HasMetrics)
+            ResetSummary = "초기화 · " + string.Join(" · ", Metrics.Select(metric => $"{metric.Label} {metric.ResetCountdown}"));
+        else
+            ResetSummary = "";
         ResetCountdownVisible = ShowResetCountdown && HasMetrics;
     }
 }
 
 public sealed class UsageMetric
 {
+    public string ProviderName { get; init; } = "";
     public string Label { get; }
     public string Amount { get; }
     public string Percentage => $"{Amount}%";

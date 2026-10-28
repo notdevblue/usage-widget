@@ -15,10 +15,7 @@ internal static class ProfileJson
         Converters =
         {
             new EnumConverter<FiveHourDisplay>(),
-            new EnumConverter<WidgetTheme>(),
-            new EnumConverter<LayoutBlockKind>(),
-            new EnumConverter<UsageVisualization>(),
-            new EnumConverter<UsageWindowSource>()
+            new EnumConverter<WidgetTheme>()
         }
     };
 
@@ -35,7 +32,8 @@ internal static class ProfileJson
             if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var number))
             {
                 var value = (TEnum)Enum.ToObject(typeof(TEnum), number);
-                return Enum.IsDefined(value) ? value : new();
+                if (Enum.IsDefined(value))
+                    return value;
             }
             if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
                 reader.Skip();

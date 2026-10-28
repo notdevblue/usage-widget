@@ -9,7 +9,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using UsageMonitor.Core;
-using UsageMonitor.Layout;
 using UsageMonitor.Services;
 using ShapePath = System.Windows.Shapes.Path;
 
@@ -23,7 +22,7 @@ internal static class CodexResetNoticeTests
     private const string AnnouncedText = "Codex 리셋 예고됨";
     private const string TicketScheduledText = "리셋 티켓 · 10/27 03:00 예정";
     private const string TicketAnnouncedText = "리셋 티켓 지급 예고됨";
-    private const string DeadlineText = "리셋 · 10/27 03:00까지 예정";
+    private const string DeadlineText = "Codex 리셋 · 10/27 03:00까지 예정";
     private const string TicketDeadlineText = "리셋 티켓 · 10/27 03:00까지 예정";
     private const string SourceUrl = "https://example.invalid/tibo/status/reset-announcement";
     private static int assertions;
@@ -34,7 +33,6 @@ internal static class CodexResetNoticeTests
         PendingNoticeAndExpiry();
         RevealOnlyOnVisibilityChange();
         CompactThemes();
-        CustomLayoutKeepsNotice();
         ClickKeepsDragInput();
         ApplyPalette(WidgetTheme.Light);
         Console.WriteLine($"PASS {assertions} Codex reset notice presentation assertions");
@@ -106,7 +104,7 @@ internal static class CodexResetNoticeTests
             ApplyPalette(theme);
             var model = CreateModel();
             var other = new WidgetViewModel { ProviderId = "claude", ProviderName = "Claude" };
-            other.Metrics.Add(new UsageMetric(Window(), Now, Brushes.SeaGreen, Brushes.Goldenrod, Brushes.Firebrick));
+            other.Metrics.Add(new UsageMetric(Window(), Now, Brushes.SeaGreen, Brushes.Goldenrod, Brushes.Firebrick) { ProviderName = "Claude" });
             other.Update();
             model.Providers.Add(other);
             var view = CreateView(model);
@@ -129,7 +127,7 @@ internal static class CodexResetNoticeTests
             var automatic = Descendants<ItemsControl>(view).First(control => ReferenceEquals(control.ItemsSource, model.Providers));
             var noticeTop = button.TranslatePoint(new Point(), view).Y;
             var usageBottom = automatic.TranslatePoint(new Point(0, automatic.ActualHeight), view).Y;
-            Check(noticeTop >= usageBottom, "The notice must follow the entire automatic provider region.");
+            Check(noticeTop >= usageBottom, "The notice must follow every provider row.");
             Render(view, $"reset-news-{Scenario(text)}-{theme.ToString().ToLowerInvariant()}.png");
         }
     }
@@ -149,28 +147,6 @@ internal static class CodexResetNoticeTests
         return "announced";
     }
 
-    private static void CustomLayoutKeepsNotice()
-    {
-        ApplyPalette(WidgetTheme.Light);
-        var model = CreateModel();
-        model.CustomLayoutVisible = true;
-        model.AutomaticLayoutVisible = false;
-        var view = CreateView(model);
-        view.LayoutCanvas.Render(new()
-        {
-            Enabled = true, Width = 158, Height = 42,
-            Blocks = [new() { Width = 158, Height = 42 }]
-        }, new() { Windows = [Window()] });
-        model.ApplyResetNotice(Notice(ScheduledText), Now);
-        Settle();
-        Arrange(view);
-        var button = (Button)view.FindName("ResetNoticeButton");
-        var noticeTop = button.TranslatePoint(new Point(), view).Y;
-        var usageBottom = view.LayoutCanvas.TranslatePoint(new Point(0, view.LayoutCanvas.ActualHeight), view).Y;
-        Check(view.LayoutCanvas.Children.Count == 1, "Showing a notice must retain the custom usage block.");
-        Check(button.Visibility == Visibility.Visible && noticeTop >= usageBottom, "The notice must follow the whole custom canvas.");
-        Render(view, "reset-news-custom.png");
-    }
 
     private static void ClickKeepsDragInput()
     {
@@ -193,8 +169,9 @@ internal static class CodexResetNoticeTests
         Check(dragCalls == 0 && !input.Handled, "Notice label input must reach its button without starting a widget drag.");
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(clickedUrl == SourceUrl, "The notice event must expose its matching source URL without launching a browser in tests.");
-        var providerLabel = Descendants<TextBlock>(view).Single(text => text.Text == "Codex ·");
-        providerLabel.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+        var provider = model.Providers.Single();
+        var providerHeader = Descendants<TextBlock>(view).Single(text => text.Text == provider.ProviderName && ReferenceEquals(text.DataContext, provider));
+        providerHeader.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
         {
             RoutedEvent = Mouse.PreviewMouseDownEvent
         });
@@ -214,7 +191,7 @@ internal static class CodexResetNoticeTests
     private static WidgetViewModel CreateModel()
     {
         var provider = new WidgetViewModel();
-        provider.Metrics.Add(new UsageMetric(Window(), Now, Brushes.SeaGreen, Brushes.Goldenrod, Brushes.Firebrick));
+        provider.Metrics.Add(new UsageMetric(Window(), Now, Brushes.SeaGreen, Brushes.Goldenrod, Brushes.Firebrick) { ProviderName = "Codex" });
         provider.Update();
         var model = new WidgetViewModel();
         model.Providers.Add(provider);
@@ -272,7 +249,7 @@ internal static class CodexResetNoticeTests
 
     private static void ApplyPalette(WidgetTheme theme)
     {
-        foreach (var pair in new ThemeCatalog().Create(theme, new(), false))
+        foreach (var pair in new ThemeCatalog().Create(theme, false))
             Application.Current.Resources[pair.Key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pair.Value));
     }
 

@@ -170,7 +170,7 @@ internal static class WidgetDragInputTests
         {
             Id = "weekly", Label = "주간", WindowMinutes = 10080, UsedPercent = 37,
             ResetsAt = DateTimeOffset.UtcNow.AddDays(2)
-        }, DateTimeOffset.UtcNow, Brushes.SeaGreen, Brushes.Goldenrod, Brushes.Firebrick));
+        }, DateTimeOffset.UtcNow, Brushes.SeaGreen, Brushes.Goldenrod, Brushes.Firebrick) { ProviderName = "Codex" });
         provider.Update();
         var model = new WidgetViewModel();
         model.Providers.Add(provider);
@@ -187,7 +187,7 @@ internal static class WidgetDragInputTests
         [
             Descendants<TextBlock>(view).Single(text => text.Text == "주간"),
             progress,
-            Descendants<Border>(progress).First()
+            Descendants<TextBlock>(view).Single(text => text.Text == "63%")
         ];
     }
 

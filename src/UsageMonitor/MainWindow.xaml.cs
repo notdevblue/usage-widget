@@ -15,7 +15,6 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using UsageMonitor.Core;
-using UsageMonitor.Layout;
 using UsageMonitor.Presentation;
 using UsageMonitor.Providers;
 using UsageMonitor.Services;
@@ -216,7 +215,7 @@ public partial class MainWindow : Window
     private void OpenSettings()
     {
         if (_dialogs.TryGetValue("settings", out var existing)) { existing.Activate(); return; }
-        var window = new SettingsWindow(_settings, BuildLayoutContext) { Owner = this };
+        var window = new SettingsWindow(_settings) { Owner = this };
         ConfigureStartup(window);
         _dialogs["settings"] = window;
         window.SettingsChanged += value =>
@@ -226,8 +225,7 @@ public partial class MainWindow : Window
                 AlwaysOnTop = value.AlwaysOnTop, FiveHourDisplay = value.FiveHourDisplay,
                 ShowResetCountdown = value.ShowResetCountdown,
                 ShowCodex = value.ShowCodex, ShowClaude = value.ShowClaude, ShowGrok = value.ShowGrok,
-                Theme = value.Theme, CustomColors = value.CustomColors, Scale = value.Scale,
-                Opacity = value.Opacity, Layout = value.Layout
+                Theme = value.Theme, Scale = value.Scale, Opacity = value.Opacity
             };
             Topmost = _settings.AlwaysOnTop;
             ApplyTheme();
@@ -418,32 +416,11 @@ public partial class MainWindow : Window
                 RenderMissingRuntime(runtime);
         }
         var providers = DisplayProviders();
-        var layout = _settings.Layout with
-        {
-            Blocks = _settings.Layout.Blocks.Where(block => _settings.IsProviderVisible(block.ProviderId)).ToArray()
-        };
-        var context = BuildLayoutContext();
-        var renderableBlocks = layout.Blocks
-            .Where(block => block.Kind is LayoutBlockKind.Account or LayoutBlockKind.Status || UsageLayoutCanvas.TryGetWindow(context, block, out _))
-            .ToArray();
-        var custom = layout.Enabled && renderableBlocks.Length > 0;
-        _view.CustomLayoutVisible = custom;
-        var covered = CoveredProviders(renderableBlocks, custom);
         _view.Providers.Clear();
-        foreach (var runtime in providers.Where(runtime => !covered.Contains(runtime.Id)))
+        foreach (var runtime in providers)
             _view.Providers.Add(runtime.View);
-        _view.AutomaticLayoutVisible = _view.Providers.Count > 0;
-        if (custom)
-            WidgetContent.LayoutCanvas.Render(layout, context);
         _tray.Text = TrayText(providers);
         UpdateView();
-    }
-
-    private static HashSet<string> CoveredProviders(LayoutBlock[] renderableBlocks, bool custom)
-    {
-        if (custom)
-            return renderableBlocks.Select(block => block.ProviderId).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return new(StringComparer.OrdinalIgnoreCase);
     }
 
     private static string TrayText(ProviderRuntime[] providers)
@@ -470,31 +447,77 @@ public partial class MainWindow : Window
         var connected = account.Kind is AccountKind.ChatGpt or AccountKind.Claude or AccountKind.Grok;
         view.Metrics.Clear();
         foreach (var window in DisplayWindows(runtime))
-            view.Metrics.Add(new UsageMetric(window, DateTimeOffset.Now, BrushResource("AccentBrush"), BrushResource("WarningBrush"), BrushResource("ErrorBrush")));
+            view.Metrics.Add(new UsageMetric(window, DateTimeOffset.Now, BrushResource("UsageBrush"), BrushResource("WarningBrush"), BrushResource("ErrorBrush"))
+            {
+                ProviderName = runtime.Name
+            });
         view.Plan = FormatPlan(account.Plan);
-        view.Account = account.Email.Length > 0 ? account.Email : connected ? $"연결된 {runtime.Name} 계정" : "연결된 계정 없음";
+        view.Account = AccountText(runtime, connected);
         view.RuntimeMissing = false;
-        view.ActionText = runtime.Id switch
-        {
-            "claude" => "Claude에서 로그인",
-            "grok" => "Grok에서 로그인",
-            _ => connected ? "다른 계정으로 로그인" : "ChatGPT로 로그인"
-        };
-        view.EmptyTitle = connected && runtime.Snapshot.IsStale && runtime.Snapshot.Windows.Count == 0 ? "사용량 조회 대기" : account.Kind switch
+        view.ActionText = LoginActionText(runtime, connected);
+        view.EmptyTitle = EmptyTitle(runtime, connected);
+        view.EmptyBody = EmptyBody(runtime, connected);
+        view.Status = ProviderStatus(runtime, connected);
+        if (view.Stale)
+            view.StatusBrush = BrushResource("WarningBrush");
+        else
+            view.StatusBrush = BrushResource("AccentBrush");
+    }
+
+    private static string AccountText(ProviderRuntime runtime, bool connected)
+    {
+        if (runtime.Snapshot.Account.Email.Length > 0)
+            return runtime.Snapshot.Account.Email;
+        if (connected)
+            return $"연결된 {runtime.Name} 계정";
+        return "연결된 계정 없음";
+    }
+
+    private static string LoginActionText(ProviderRuntime runtime, bool connected)
+    {
+        if (runtime.Id == "claude")
+            return "Claude에서 로그인";
+        if (runtime.Id == "grok")
+            return "Grok에서 로그인";
+        if (connected)
+            return "다른 계정으로 로그인";
+        return "ChatGPT로 로그인";
+    }
+
+    private static string EmptyTitle(ProviderRuntime runtime, bool connected)
+    {
+        if (connected && runtime.Snapshot.IsStale && runtime.Snapshot.Windows.Count == 0)
+            return "사용량 조회 대기";
+        return runtime.Snapshot.Account.Kind switch
         {
             AccountKind.SignedOut => "로그인 필요",
             AccountKind.ApiKey or AccountKind.Other => "구독 로그인 필요",
             _ => "한도 미제공"
         };
-        view.EmptyBody = connected && runtime.Snapshot.IsStale && runtime.Snapshot.Windows.Count == 0 ? runtime.Snapshot.StatusDetail
-            : connected && runtime.Snapshot.Windows.Count > 0 ? "설정에서 5시간 한도를 켜주세요."
-            : connected ? "계정에서 한도를 제공하지 않았어요."
-            : $"트레이 아이콘 → 설정에서 {runtime.Name} 구독 계정을 연결해주세요.";
-        view.Status = view.Stale ? $"{FormatAge(runtime.Snapshot)} · 마지막 값 / 조회 대기"
-            : _preview ? "미리보기 · 실제 사용량이 아니에요"
-            : runtime.Snapshot.IsCached ? $"{FormatAge(runtime.Snapshot)} 갱신 · 로컬 캐시"
-            : connected ? $"{FormatAge(runtime.Snapshot)} 동기화" : "계정 연결 대기 중";
-        view.StatusBrush = BrushResource(view.Stale ? "WarningBrush" : "AccentBrush");
+    }
+
+    private static string EmptyBody(ProviderRuntime runtime, bool connected)
+    {
+        if (connected && runtime.Snapshot.IsStale && runtime.Snapshot.Windows.Count == 0)
+            return runtime.Snapshot.StatusDetail;
+        if (connected && runtime.Snapshot.Windows.Count > 0)
+            return "설정에서 5시간 한도를 켜주세요.";
+        if (connected)
+            return "계정에서 한도를 제공하지 않았어요.";
+        return $"트레이 아이콘 → 설정에서 {runtime.Name} 구독 계정을 연결해주세요.";
+    }
+
+    private string ProviderStatus(ProviderRuntime runtime, bool connected)
+    {
+        if (runtime.View.Stale)
+            return $"{FormatAge(runtime.Snapshot)} · 마지막 값 / 조회 대기";
+        if (_preview)
+            return "미리보기 · 실제 사용량이 아니에요";
+        if (runtime.Snapshot.IsCached)
+            return $"{FormatAge(runtime.Snapshot)} 갱신 · 로컬 캐시";
+        if (connected)
+            return $"{FormatAge(runtime.Snapshot)} 동기화";
+        return "계정 연결 대기 중";
     }
 
     private static void RenderMissingRuntime(ProviderRuntime runtime)
@@ -518,7 +541,7 @@ public partial class MainWindow : Window
             var view = runtime.View;
             view.ShowResetCountdown = _settings.ShowResetCountdown;
             var allMetrics = VisibleWindows(runtime).Select(window => new UsageMetric(window, DateTimeOffset.Now,
-                BrushResource("AccentBrush"), BrushResource("WarningBrush"), BrushResource("ErrorBrush"))).ToArray();
+                BrushResource("UsageBrush"), BrushResource("WarningBrush"), BrushResource("ErrorBrush"))).ToArray();
             var limits = ProviderLimits(allMetrics, view.EmptyBody);
             view.HoverText = $"{runtime.Name} {view.Plan}\n{limits}\n{view.Status}";
             if (view.Detail.Length > 0)
@@ -752,34 +775,22 @@ public partial class MainWindow : Window
     private void ApplyTheme()
     {
         var systemDark = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1) is int value && value == 0;
-        foreach (var token in new ThemeCatalog().Create(_settings.Theme, _settings.CustomColors, systemDark))
+        foreach (var token in new ThemeCatalog().Create(_settings.Theme, systemDark))
         {
             var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(token.Value));
             brush.Freeze();
             Application.Current.Resources[token.Key] = brush;
         }
-        foreach (var editor in Application.Current.Windows.OfType<LayoutEditorWindow>())
-            editor.RefreshTheme();
     }
 
     private void ApplyAppearance()
     {
-        Width = (_settings.Layout.Enabled ? _settings.Layout.Width + 50 : 190) * _settings.Scale;
+        Width = 190 * _settings.Scale;
         WidgetContent.LayoutTransform = new ScaleTransform(_settings.Scale, _settings.Scale);
         WidgetContent.Opacity = _settings.Opacity;
     }
 
     private Brush BrushResource(string name) => (Brush)FindResource(name);
-
-    private LayoutContext BuildLayoutContext() => new()
-    {
-        Providers = _providers.Select(runtime => new LayoutProviderContext
-        {
-            ProviderId = runtime.Id, ProviderName = runtime.Name, Windows = VisibleWindows(runtime),
-            Account = runtime.View.Account, Plan = runtime.View.Plan, Status = runtime.View.Status,
-            StatusBrush = runtime.View.StatusBrush
-        }).ToArray()
-    };
 
     private static void ResetConnectionPresentation(ProviderRuntime runtime)
     {
@@ -798,7 +809,7 @@ public partial class MainWindow : Window
 
     private void ResetAppearance()
     {
-        _settings = _settings with { Theme = WidgetTheme.System, CustomColors = new(), Scale = 1, Opacity = 1, Layout = new() };
+        _settings = _settings with { Theme = WidgetTheme.System, Scale = 1, Opacity = 1 };
         ApplyTheme();
         ApplyAppearance();
         SaveSettings();

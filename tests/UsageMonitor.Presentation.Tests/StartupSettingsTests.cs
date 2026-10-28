@@ -30,8 +30,8 @@ internal static class StartupSettingsTests
 
     private static void StartupControlsStayIndependentOfAppearance()
     {
-        var initial = new AppSettings { Theme = WidgetTheme.Mint, Scale = 1.2, ShowGrok = false };
-        var window = new SettingsWindow(initial, () => new());
+        var initial = new AppSettings { Theme = WidgetTheme.Light, Scale = 1.2, ShowGrok = false };
+        var window = new SettingsWindow(initial);
         try
         {
             var root = (FrameworkElement)window.Content;
@@ -57,7 +57,7 @@ internal static class StartupSettingsTests
             window.UpdateSettings(initial with { Theme = WidgetTheme.Dark });
             Check(option.IsChecked == true && option.IsEnabled && startupChanges.Count == 2 && settingsChanges == 0,
                 "External application settings updates must preserve startup state without publishing either event.");
-            Descendants<ComboBox>(root).Single(control => AutomationProperties.GetName(control) == "화면 테마").SelectedIndex = (int)WidgetTheme.Midnight;
+            Descendants<ComboBox>(root).Single(control => AutomationProperties.GetName(control) == "화면 테마").SelectedIndex = (int)WidgetTheme.Light;
             Check(settingsChanges == 1 && startupChanges.Count == 2 && option.IsChecked == true,
                 "Theme changes must not reset or re-register startup state.");
             Descendants<Button>(root).Single(button => Equals(button.Content, "외형 기본값으로")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

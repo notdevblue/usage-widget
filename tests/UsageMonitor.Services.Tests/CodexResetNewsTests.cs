@@ -69,7 +69,7 @@ internal static class CodexResetNewsTests
         assert(exact.Text == $"Codex 리셋 · {localTime} 예정", "Explicit reset times must use the PC local time.");
         assert(exact.SourceUrl == "https://x.com/thsottiaux/status/1234567890" && exact.ExpiresAt == EffectiveAt, "Trusted reset notices must retain their post link and exact expiry.");
         assert(exact.ToolTip.Contains("Tibo X") && exact.ToolTip.Contains("didcodexreset.com") && exact.ToolTip.Contains("PC 현지 시각"), "Reset tooltips must identify the original post, aggregator, and local time.");
-        assert(CodexResetNewsService.Parse(Change("scheduleConstraint", "\"deadline\""), Now).Text == $"리셋 · {localTime}까지 예정", "Deadline announcements must retain the compact upper-bound wording.");
+        assert(CodexResetNewsService.Parse(Change("scheduleConstraint", "\"deadline\""), Now).Text == $"Codex 리셋 · {localTime}까지 예정", "Deadline announcements must identify Codex and retain the upper-bound wording.");
         var combined = CodexResetNewsService.Parse(Change("resetType", "\"global_and_banked\""), Now);
         assert(combined.IsVisible(Now) && combined.Text == exact.Text && combined.ToolTip.Contains("전체 리셋 및 리셋 티켓 지급"), "Combined announcements must keep the compact reset label and explain both reset types in the tooltip.");
         var bankedPayload = Change("resetType", "\"banked\"");

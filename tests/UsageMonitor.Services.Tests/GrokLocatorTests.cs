@@ -53,11 +53,6 @@ internal static class GrokLocatorTests
         assert(legacy.GrokPath == "" && legacy.CodexPath == expected.CodexPath && legacy.ClaudePath == expected.ClaudePath && legacy.AlwaysOnTop, "Legacy settings must gain an empty Grok path without losing existing preferences.");
         File.WriteAllText(store.FilePath, "{\"grokPath\":null,\"alwaysOnTop\":true}");
         assert(store.Load().GrokPath == "" && store.Load().AlwaysOnTop, "Null Grok paths must normalize without discarding unrelated preferences.");
-        var path = Path.Combine(directory, "grok-appearance.json");
-        var profiles = new AppearanceProfileStore();
-        File.WriteAllText(path, "{\"version\":1,\"theme\":\"Mint\",\"grokPath\":\"C:\\\\private\\\\grok.exe\"}");
-        assert(profiles.TryImport(path, out var profile) && profile.Theme == WidgetTheme.Mint, "Appearance imports must ignore machine-specific Grok paths.");
-        assert(profiles.TryExport(path, profile) && !File.ReadAllText(path).Contains("grokPath", StringComparison.OrdinalIgnoreCase), "Appearance exports must never include Grok executable preferences.");
     }
 
     private static string CreateExecutable(string path)

@@ -57,11 +57,6 @@ internal static class ClaudeLocatorTests
         assert(legacy.ClaudePath == "" && legacy.CodexPath == expected.CodexPath && legacy.AlwaysOnTop, "Legacy settings must gain an empty Claude path without losing existing preferences.");
         File.WriteAllText(store.FilePath, "{\"claudePath\":null,\"alwaysOnTop\":true}");
         assert(store.Load().ClaudePath == "" && store.Load().AlwaysOnTop, "Null Claude paths must normalize without discarding unrelated preferences.");
-        var path = Path.Combine(directory, "claude-appearance.json");
-        var profiles = new AppearanceProfileStore();
-        File.WriteAllText(path, "{\"version\":1,\"theme\":\"Mint\",\"claudePath\":\"C:\\\\private\\\\claude.exe\"}");
-        assert(profiles.TryImport(path, out var profile) && profile.Theme == WidgetTheme.Mint, "Appearance imports must ignore machine-specific Claude paths.");
-        assert(profiles.TryExport(path, profile) && !File.ReadAllText(path).Contains("claudePath", StringComparison.OrdinalIgnoreCase), "Appearance exports must never include Claude executable preferences.");
     }
 
     private static string CreateExecutable(string path)

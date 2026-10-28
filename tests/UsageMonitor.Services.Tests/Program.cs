@@ -54,8 +54,7 @@ void TestSettings()
     {
         AlwaysOnTop = true,
         FiveHourDisplay = FiveHourDisplay.Hidden,
-        Theme = WidgetTheme.Custom,
-        CustomColors = new ThemeColors { Background = "#152535", Foreground = "#F2F4F8", Accent = "#E5B98C" },
+        Theme = WidgetTheme.Dark,
         Scale = 1.2,
         Opacity = 0.85,
         HasPosition = true,
@@ -71,14 +70,7 @@ void TestSettings()
     File.WriteAllText(store.FilePath, "{\"alwaysOnTop\":true,\"theme\":2,\"refreshSeconds\":300}");
     var legacy = store.Load();
     Assert(legacy.AlwaysOnTop && legacy.Theme == WidgetTheme.Dark && legacy.RefreshSeconds == 300, "Legacy settings must preserve existing values.");
-    Assert(legacy.CustomColors == new ThemeColors() && legacy.Scale == 1 && legacy.Opacity == 1, "Legacy settings must receive defaults for new appearance values.");
-
-    File.WriteAllText(store.FilePath, "{\"theme\":\"custom\",\"customColors\":{\"background\":\"invalid\",\"foreground\":null,\"accent\":\" #abc123 \"},\"scale\":1.25,\"opacity\":0.9}");
-    var custom = store.Load();
-    Assert(custom.Theme == WidgetTheme.Custom && custom.CustomColors.Background == "#F8FAF8" && custom.CustomColors.Foreground == "#202D29", "Invalid custom colors must fall back individually.");
-    Assert(custom.CustomColors.Accent == "#ABC123" && custom.Scale == 1.25 && custom.Opacity == 0.9, "Valid custom colors and dimensions must survive normalization.");
-    File.WriteAllText(store.FilePath, "{\"customColors\":null}");
-    Assert(store.Load().CustomColors == new ThemeColors(), "A null custom palette must recover defaults.");
+    Assert(legacy.Scale == 1 && legacy.Opacity == 1, "Legacy settings must receive defaults for appearance dimensions.");
     File.WriteAllText(store.FilePath, "{\"alwaysOnTop\":true,\"theme\":\"unknown-theme\",\"fiveHourDisplay\":\"unknown-display\",\"scale\":\"NaN\",\"opacity\":\"Infinity\"}");
     var invalidAppearance = store.Load();
     Assert(invalidAppearance.AlwaysOnTop && invalidAppearance.Theme == WidgetTheme.System && invalidAppearance.FiveHourDisplay == FiveHourDisplay.Automatic, "Invalid enum strings must recover individually without discarding other settings.");
@@ -121,37 +113,35 @@ void TestSettings()
 void TestThemeCatalog()
 {
     var catalog = new ThemeCatalog();
-    var keys = new[] { "CardBrush", "TextBrush", "SecondaryBrush", "AccentBrush", "AccentSoftBrush", "TrackBrush", "LineBrush", "HoverBrush", "ErrorBrush", "WarningBrush", "ActionTextBrush" };
-    Assert(Enum.GetValues<WidgetTheme>().Select(theme => (int)theme).SequenceEqual(Enumerable.Range(0, 8)), "Theme numeric values must remain stable for legacy settings.");
+    var keys = new[] { "CardBrush", "SurfaceBrush", "TextBrush", "SecondaryBrush", "AccentBrush", "AccentSoftBrush", "UsageBrush", "TrackBrush", "LineBrush", "HoverBrush", "ErrorBrush", "WarningBrush", "ActionTextBrush" };
+    Assert(Enum.GetValues<WidgetTheme>().Select(theme => (int)theme).SequenceEqual(Enumerable.Range(0, 3)), "Only System, Light and Dark may remain, with their legacy numeric values.");
 
     foreach (var theme in Enum.GetValues<WidgetTheme>())
     {
-        var palette = catalog.Create(theme, new(), false);
+        var palette = catalog.Create(theme, false);
         Assert(palette.Count == keys.Length && keys.All(palette.ContainsKey), $"{theme} must provide every resource token.");
         Assert(palette.Values.All(IsHex), $"{theme} must return six-digit hex colors.");
         Assert(Contrast(palette["CardBrush"], palette["TextBrush"]) >= 7, $"{theme} foreground must remain readable.");
         Assert(Contrast(palette["CardBrush"], palette["SecondaryBrush"]) >= 4.5, $"{theme} secondary text must remain readable.");
+        Assert(Contrast(palette["SurfaceBrush"], palette["TextBrush"]) >= 7, $"{theme} foreground must remain readable on raised surfaces.");
+        Assert(Contrast(palette["SurfaceBrush"], palette["SecondaryBrush"]) >= 4.5, $"{theme} secondary text must remain readable on raised surfaces.");
         Assert(palette["ActionTextBrush"] is "#000000" or "#FFFFFF", $"{theme} action text must choose black or white.");
         Assert(Contrast(palette["AccentBrush"], palette["ActionTextBrush"]) >= 4.5, $"{theme} action text must remain readable.");
+        Assert(Contrast(palette["UsageBrush"], palette["TrackBrush"]) >= 3, $"{theme} usage bars must remain distinguishable from their tracks.");
+        Assert(palette["UsageBrush"] != palette["AccentBrush"], $"{theme} usage bars must have a dedicated color independent of UI actions.");
     }
 
-    var light = catalog.Create(WidgetTheme.Light, new(), false);
-    var dark = catalog.Create(WidgetTheme.Dark, new(), false);
-    Assert(catalog.Create(WidgetTheme.System, new(), false).SequenceEqual(light), "System theme must follow light mode.");
-    Assert(catalog.Create(WidgetTheme.System, new(), true).SequenceEqual(dark), "System theme must follow dark mode.");
-    Assert(catalog.Create((WidgetTheme)123, new(), false).SequenceEqual(light), "Unknown themes must use the light palette.");
-    var presetBackgrounds = new[] { WidgetTheme.Light, WidgetTheme.Dark, WidgetTheme.Midnight, WidgetTheme.Mint, WidgetTheme.Lavender, WidgetTheme.Sand }
-        .Select(theme => catalog.Create(theme, new(), false)["CardBrush"]);
-    Assert(presetBackgrounds.Distinct().Count() == 6, "Preset themes must have distinct backgrounds.");
-
-    var custom = catalog.Create(WidgetTheme.Custom, new ThemeColors { Background = "#112233", Foreground = "#EEDDCC", Accent = "#707070" }, false);
-    Assert(custom["CardBrush"] == "#112233" && custom["TextBrush"] == "#EEDDCC" && custom["AccentBrush"] == "#707070", "Custom palettes must preserve the selected base colors.");
-    Assert(custom["AccentSoftBrush"] != custom["CardBrush"] && custom["TrackBrush"] != custom["CardBrush"] && custom["HoverBrush"] != custom["CardBrush"], "Custom surfaces must derive from the selected base colors.");
-    var lowContrast = catalog.Create(WidgetTheme.Custom, new ThemeColors { Background = "#777777", Foreground = "#777777", Accent = "#777777" }, false);
-    Assert(Contrast(lowContrast["CardBrush"], lowContrast["SecondaryBrush"]) >= 4.5, "Secondary text must remain readable even for a low contrast custom foreground.");
-    Assert(Contrast(lowContrast["AccentBrush"], lowContrast["ActionTextBrush"]) >= 4.5, "Custom action text must choose the higher contrast option.");
-    var invalid = catalog.Create(WidgetTheme.Custom, new ThemeColors { Background = "#123", Foreground = "rgba(0,0,0,1)", Accent = "#GGGGGG" }, false);
-    Assert(invalid.SequenceEqual(light), "Invalid custom colors must safely use defaults.");
+    var light = catalog.Create(WidgetTheme.Light, false);
+    var dark = catalog.Create(WidgetTheme.Dark, false);
+    Assert(catalog.Create(WidgetTheme.System, false).SequenceEqual(light), "System theme must follow light mode.");
+    Assert(catalog.Create(WidgetTheme.System, true).SequenceEqual(dark), "System theme must follow dark mode.");
+    Assert(catalog.Create(WidgetTheme.Light, true).SequenceEqual(light), "Explicit light mode must ignore the system theme.");
+    Assert(catalog.Create(WidgetTheme.Dark, true).SequenceEqual(dark), "Explicit dark mode must ignore the system theme.");
+    Assert(catalog.Create((WidgetTheme)123, false).SequenceEqual(light) && catalog.Create((WidgetTheme)123, true).SequenceEqual(dark), "Unknown themes must follow the system palette.");
+    Assert(light["CardBrush"] == "#F5F5F7" && light["TextBrush"] == "#1D1D1F" && light["AccentBrush"] == "#007AFF", "Light mode must use the fixed neutral palette and blue accent.");
+    Assert(dark["CardBrush"] == "#242426" && dark["TextBrush"] == "#F5F5F7" && dark["AccentBrush"] == "#0A84FF", "Dark mode must use the fixed neutral palette and blue accent.");
+    Assert(light["UsageBrush"] == "#248A3D", "Light mode must use the established green usage bar color.");
+    Assert(dark["UsageBrush"] == "#30D158", "Dark mode must use the established bright green usage bar color.");
 }
 
 bool IsHex(string value) => value.Length == 7 && value[0] == '#' && int.TryParse(value.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out _);
@@ -168,9 +158,16 @@ double Luminance(string color)
     var packed = Convert.ToInt32(color[1..], 16);
     var channels = new[] { (packed >> 16) & 255, (packed >> 8) & 255, packed & 255 }
         .Select(channel => channel / 255.0)
-        .Select(channel => channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4))
+        .Select(LinearChannel)
         .ToArray();
     return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+}
+
+double LinearChannel(double channel)
+{
+    if (channel <= 0.04045)
+        return channel / 12.92;
+    return Math.Pow((channel + 0.055) / 1.055, 2.4);
 }
 
 void TestLocator()

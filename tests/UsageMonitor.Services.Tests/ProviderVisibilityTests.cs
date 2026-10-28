@@ -1,4 +1,3 @@
-using System.Text.Json;
 using UsageMonitor.Services;
 
 internal static class ProviderVisibilityTests
@@ -34,24 +33,8 @@ internal static class ProviderVisibilityTests
         File.WriteAllText(store.FilePath, "{\"showCodex\":false}");
         var partial = store.Load();
         assert(!partial.ShowCodex && partial.ShowClaude && partial.ShowGrok, "A partially updated settings file must default each missing visibility option independently.");
-        var invalidAppearance = partial with { Theme = (WidgetTheme)99, Scale = double.NaN, Layout = new() { Enabled = true } };
+        var invalidAppearance = partial with { Theme = (WidgetTheme)99, Scale = double.NaN };
         assert(store.TrySave(invalidAppearance) && !store.Load().ShowCodex && store.Load().ShowClaude && store.Load().ShowGrok,
             "Appearance normalization must preserve service visibility preferences.");
-
-        TestAppearanceBoundary(directory, assert);
-    }
-
-    private static void TestAppearanceBoundary(string directory, Action<bool, string> assert)
-    {
-        var profilePath = Path.Combine(directory, "provider-visibility-theme.json");
-        var profiles = new AppearanceProfileStore();
-        File.WriteAllText(profilePath, "{\"version\":1,\"theme\":\"Mint\",\"showCodex\":false,\"showClaude\":false,\"showGrok\":false}");
-        assert(profiles.TryImport(profilePath, out var imported) && imported.Theme == WidgetTheme.Mint,
-            "A theme file containing machine visibility fields must still import its appearance.");
-        assert(profiles.TryExport(profilePath, imported), "Imported appearance must remain exportable.");
-        using var document = JsonDocument.Parse(File.ReadAllText(profilePath));
-        var names = document.RootElement.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        assert(!names.Contains("showCodex") && !names.Contains("showClaude") && !names.Contains("showGrok"),
-            "Theme imports and exports must not carry machine service visibility preferences.");
     }
 }

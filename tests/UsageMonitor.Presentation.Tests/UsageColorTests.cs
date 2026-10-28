@@ -7,10 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using Ellipse = System.Windows.Shapes.Ellipse;
-using Shape = System.Windows.Shapes.Shape;
 using UsageMonitor.Core;
-using UsageMonitor.Layout;
 using UsageMonitor.Presentation;
 using UsageMonitor.Services;
 
@@ -30,7 +27,7 @@ internal static class UsageColorTests
         RemainingFraction();
         AnchorContinuity();
         ThemedRenderers();
-        Console.WriteLine("PASS continuous usage colors, theme anchors and compact/free layout parity");
+        Console.WriteLine("PASS continuous usage colors, theme anchors and fixed widget rendering");
     }
 
     private static void Anchors()
@@ -88,17 +85,17 @@ internal static class UsageColorTests
     private static void ThemedRenderers()
     {
         var resources = Application.Current.Resources;
-        var keys = new ThemeCatalog().Create(WidgetTheme.Light, new(), false).Keys.ToArray();
+        var keys = new ThemeCatalog().Create(WidgetTheme.Light, false).Keys.ToArray();
         var localKeys = resources.Keys.Cast<object>().ToHashSet();
         var originals = keys.Where(localKeys.Contains).ToDictionary(key => key, key => resources[key]);
-        var gallery = new StackPanel { Width = 620 };
+        var gallery = new StackPanel { Width = 190 };
         var themeAccents = new HashSet<Color>();
         try
         {
-            foreach (var theme in new[] { WidgetTheme.Light, WidgetTheme.Midnight, WidgetTheme.Custom })
+            foreach (var theme in new[] { WidgetTheme.Light, WidgetTheme.Dark })
             {
                 ApplyPalette(theme);
-                var normal = ResourceBrush("AccentBrush");
+                var normal = ResourceBrush("UsageBrush");
                 var warning = ResourceBrush("WarningBrush");
                 var error = ResourceBrush("ErrorBrush");
                 themeAccents.Add(ColorOf(normal));
@@ -121,16 +118,13 @@ internal static class UsageColorTests
                 foreach (var remaining in new[] { 100d, 60d, 25d, 17d, 10d })
                 {
                     var metric = ThemeMetric(remaining);
-                    var canvas = CreateCanvas(remaining);
-                    CheckFreeLayout(canvas, metric, $"{theme}, {remaining}%");
-                    CheckCompact(metric, $"{theme}, {remaining}%");
-                    section.Children.Add(canvas);
+                    section.Children.Add(CheckCompact(metric, $"{theme}, {remaining}%"));
                 }
 
                 gallery.Children.Add(section);
             }
 
-            Check(themeAccents.Count == 3, "Light, Midnight and Custom must exercise distinct theme accents.");
+            Check(themeAccents.Count == 2, "Light and Dark must exercise distinct theme accents.");
             SaveGallery(gallery);
         }
         finally
@@ -145,67 +139,35 @@ internal static class UsageColorTests
         }
     }
 
-    private static UsageLayoutCanvas CreateCanvas(double remaining)
-    {
-        var canvas = new UsageLayoutCanvas { Margin = new Thickness(10, 4, 10, 4) };
-        canvas.Render(new()
-        {
-            Enabled = true, Width = 600, Height = 112,
-            Blocks =
-            [
-                new() { Visualization = UsageVisualization.Bar, Width = 180, Height = 112 },
-                new() { Visualization = UsageVisualization.Ring, X = 200, Width = 180, Height = 112 },
-                new() { Visualization = UsageVisualization.Number, X = 400, Width = 180, Height = 112 }
-            ]
-        }, new() { Windows = [Window(remaining)] });
-        Arrange(canvas, 620, 120);
-        return canvas;
-    }
-
-    private static void CheckFreeLayout(UsageLayoutCanvas canvas, UsageMetric metric, string context)
-    {
-        Check(canvas.Children.Count == 3, $"{context}: all free layout visualizations must render.");
-        var expected = ColorOf(metric.Accent);
-        var fill = Descendants<Border>(canvas.Children[0]).Single(border => border.HorizontalAlignment == HorizontalAlignment.Left);
-        ColorEquals(expected, fill.Background, $"{context}: bar fill must use UsageMetric.Accent.");
-        var ring = Descendants<Shape>(canvas.Children[1]).Where(shape => shape is System.Windows.Shapes.Path ||
-            shape is Ellipse && shape.ReadLocalValue(Shape.StrokeProperty) is Brush).Single();
-        ColorEquals(expected, ring.Stroke, $"{context}: ring stroke must use UsageMetric.Accent.");
-        for (var index = 0; index < canvas.Children.Count; index++)
-        {
-            var amount = Descendants<TextBlock>(canvas.Children[index]).Single(text => text.Text == metric.Percentage);
-            ColorEquals(expected, amount.Foreground, $"{context}: visualization {index} percentage must use UsageMetric.Accent.");
-        }
-    }
-
-    private static void CheckCompact(UsageMetric metric, string context)
+    private static WidgetView CheckCompact(UsageMetric metric, string context)
     {
         var provider = new WidgetViewModel { Plan = "Pro" };
         provider.Metrics.Add(metric);
         provider.Update();
         var model = new WidgetViewModel();
         model.Providers.Add(provider);
-        var view = new WidgetView { DataContext = model };
+        var view = new WidgetView { DataContext = model, Width = 190 };
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-        Arrange(view, 190, 65);
+        Arrange(view, 190, 66);
         var bar = Descendants<ProgressBar>(view).Single();
         Check(bar.Value == metric.Remaining, $"{context}: compact bar must use remaining usage.");
         ColorEquals(ColorOf(metric.Accent), bar.Foreground, $"{context}: compact bar must use UsageMetric.Accent.");
+        ColorEquals(ColorOf(ResourceBrush("TrackBrush")), bar.Background, $"{context}: the bar track must follow the current theme.");
         var indicator = Descendants<Border>(bar).Single(border => border.Name == "PART_Indicator");
-        ColorEquals(ColorOf(metric.Accent), indicator.Background, $"{context}: compact bar template must render UsageMetric.Accent.");
+        ColorEquals(ColorOf(metric.Accent), indicator.Background, $"{context}: the native bar template must render the metric color.");
+        return view;
     }
 
     private static void ApplyPalette(WidgetTheme theme)
     {
-        var custom = new ThemeColors { Background = "#112233", Foreground = "#EEDDCC", Accent = "#64C8F0" };
-        foreach (var pair in new ThemeCatalog().Create(theme, custom, false))
+        foreach (var pair in new ThemeCatalog().Create(theme, false))
             Application.Current.Resources[pair.Key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pair.Value));
     }
 
-    private static UsageMetric Metric(double remaining) => new(Window(remaining), Now, Normal, Warning, Error);
+    private static UsageMetric Metric(double remaining) => new(Window(remaining), Now, Normal, Warning, Error) { ProviderName = "Codex" };
 
     private static UsageMetric ThemeMetric(double remaining) => new(Window(remaining), Now,
-        ResourceBrush("AccentBrush"), ResourceBrush("WarningBrush"), ResourceBrush("ErrorBrush"));
+        ResourceBrush("UsageBrush"), ResourceBrush("WarningBrush"), ResourceBrush("ErrorBrush")) { ProviderName = "Codex" };
 
     private static Brush ResourceBrush(string key) => (Brush)Application.Current.FindResource(key);
 
@@ -233,10 +195,10 @@ internal static class UsageColorTests
 
     private static void SaveGallery(FrameworkElement gallery)
     {
-        gallery.Measure(new Size(620, double.PositiveInfinity));
+        gallery.Measure(new Size(190, double.PositiveInfinity));
         var height = (int)Math.Ceiling(gallery.DesiredSize.Height);
-        Arrange(gallery, 620, height);
-        var bitmap = new RenderTargetBitmap(620, height, 96, 96, PixelFormats.Pbgra32);
+        Arrange(gallery, 190, height);
+        var bitmap = new RenderTargetBitmap(190, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(gallery);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));

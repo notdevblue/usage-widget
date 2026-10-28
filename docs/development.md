@@ -1,6 +1,6 @@
 # 개발과 배포
 
-다음 작업에서 저장소 위치와 릴리스 절차를 다시 찾지 않기 위한 문서다. 사용자용 설명은 [README.md](../README.md), 검증 범위와 테스트 수는 [VALIDATION.md](../VALIDATION.md)에 있다. 현재 배포 버전은 **0.1.4**이고 원격은 `https://github.com/notdevblue/usage-widget`이다. 다음 릴리스 번호는 0.1.5다.
+다음 작업에서 저장소 위치와 릴리스 절차를 다시 찾지 않기 위한 문서다. 사용자용 설명은 [README.md](../README.md), 검증 범위와 테스트 수는 [VALIDATION.md](../VALIDATION.md)에 있다. 현재 배포 버전은 **0.1.5**이고 원격은 `https://github.com/notdevblue/usage-widget`이다. 다음 릴리스 번호는 0.1.6이다.
 
 ## 저장소
 
@@ -9,16 +9,16 @@
 | 경로 | 역할 |
 | --- | --- |
 | `src/UsageMonitor.Core` | 제공자 계약, 스냅샷, CLI 전송과 응답 파싱. `net8.0`. `InternalsVisibleTo`는 `UsageMonitor.Core.Tests`. |
-| `src/UsageMonitor` | 창, 설정, 레이아웃, 실행 파일 탐색, 갱신 일정. `net8.0-windows`. 버전은 `UsageMonitor.csproj`의 `<Version>`. |
+| `src/UsageMonitor` | 창, 설정, 고정 위젯 화면, 실행 파일 탐색, 갱신 일정. `net8.0-windows`. 버전은 `UsageMonitor.csproj`의 `<Version>`. |
 | `src/UsageMonitor/Services` | 설정 저장, 경로 탐색, `RefreshSchedule`. Services 테스트가 이 폴더의 `*.cs`를 직접 컴파일한다. |
 | `tests/UsageMonitor.Core.Tests` | Core 실행형 테스트와 가짜 CLI. |
 | `tests/UsageMonitor.Services.Tests` | 설정·경로·갱신 간격 검증. |
-| `tests/UsageMonitor.Presentation.Tests` | WPF 렌더와 레이아웃 편집 검증. PNG는 `artifacts/layout-smoke`. |
+| `tests/UsageMonitor.Presentation.Tests` | WPF 렌더와 설정·표시 검증. PNG는 `artifacts/layout-smoke`. |
 | `scripts/Verify.ps1` | Release 빌드 후 Core, Services, Presentation 테스트를 순서대로 실행한다. |
 | `scripts/Publish.ps1` | 단일 파일 ZIP을 `artifacts/`에 만든다. |
 | `artifacts/` | Git에서 제외한다. 배포 ZIP을 커밋하지 않는다. |
 
-화면은 남은 비율(`100 - UsedPercent`)을 보여 준다. 5시간 한도는 `WindowMinutes == 300`이다. 기본 위젯 폭은 190이다. 서버가 준 기간만 표시하고, 요금제 이름으로 한도를 만들지 않는다.
+화면은 남은 비율(`100 - UsedPercent`)을 보여 준다. 5시간 한도는 `WindowMinutes == 300`이다. 기본 위젯 폭은 190이며, CodexBar 같은 상태 메뉴를 참고한 고정 행 배치다. 서버가 준 기간만 표시하고, 요금제 이름으로 한도를 만들지 않는다. 시스템·라이트·다크 테마만 제공한다. 이전 사용자 색상·배치 JSON 필드는 읽지 않고, 폐기된 테마 이름과 숫자는 시스템 테마로 복구한다.
 
 ## 제공자를 넣을 때
 
@@ -28,12 +28,9 @@
 - `AccountKind`. 연결됨으로 볼 종류는 `MainWindow`의 `ChatGpt`, `Claude`, `Grok` 조건에 추가한다.
 - `MainWindow`의 `_providers` 배열. 순서는 `codex`, `claude`, `grok`다. 설정 창의 Codex·Claude는 `[0]`, `[1]`을 직접 쓴다. 새 제공자는 배열 끝에 두고 `Runtime(id)`로 찾는다.
 - 실행 파일 탐색 클래스. native `.exe`만 받는다. `.cmd`와 `.ps1`은 거절한다. 순서는 저장된 경로, PATH, 사용자 설치 경로다.
-- `AppSettings`와 `SettingsStore.Normalize`. 없는 값은 빈 문자열로 맞추고, 기존 설정은 유지한다. 실행 파일 경로는 기기마다 다르므로 외형 내보내기 필드에 넣지 않는다. 외형 JSON은 `version`, `theme`, `customColors`, `scale`, `opacity`, `layout`만 가진다.
+- `AppSettings`와 `SettingsStore.Normalize`. 없는 값은 빈 문자열로 맞추고, 기존 설정은 유지한다.
 - 설정 창 섹션과 로그인 버튼. 로그인은 각 CLI의 공식 창을 `UseShellExecute`로 연다.
-- `LayoutProfile.NormalizeProvider`, `LayoutContext.ResolveProvider`, `LayoutPresetFactory`의 제공자 목록, 레이아웃 편집 콤보. 콤보 순서는 Codex, Claude, Grok이고 선택 인덱스는 0, 1, 2다. 프리셋은 창이 있는 제공자만 넣는다.
-- Core 테스트의 `allTests`, Services 테스트의 `Run` 호출, Presentation의 제공자 선택 개수.
-
-`LayoutProfile.NormalizeProvider`는 알 수 없는 이름을 `codex`로 되돌린다. `ProviderId`가 null이면 아직 막지 않는다.
+- Core 테스트의 `allTests`, Services 테스트의 `Run` 호출, Presentation의 서비스별 표시 검증.
 
 ## 사용량을 조회만 하기
 
@@ -65,7 +62,7 @@ Services 테스트는 `src/UsageMonitor/Services/*.cs`를 포함한다. 그 폴�
 
 공개 파일은 Windows x64 두 개다. `Publish.ps1 -Runtime win-arm64`는 있지만 ARM64 실행은 검증하지 않았으므로 릴리스 자산으로 올리지 않는다.
 
-1. `UsageMonitor.csproj`의 `<Version>`을 올린다. 이미 올라간 태그 번호는 다시 쓰지 않는다. v0.1.2는 Claude 조회 제한 대응, v0.1.3은 Grok 포함 크레딧, v0.1.4는 리셋 소식·서비스별 표시·로그인 시 자동 실행이다.
+1. `UsageMonitor.csproj`의 `<Version>`을 올린다. 이미 올라간 태그 번호는 다시 쓰지 않는다. v0.1.2는 Claude 조회 제한 대응, v0.1.3은 Grok 포함 크레딧, v0.1.4는 리셋 소식·서비스별 표시·로그인 시 자동 실행, v0.1.5는 컴팩트 상태 메뉴 디자인과 외형 설정 단순화다.
 2. Grok ACP `clientInfo.version`은 `GrokProcessTransport`에 따로 적혀 있다. 제품 버전과 맞출 때만 고친다. Codex 쪽 clientInfo는 0.1.0 그대로다.
 3. `scripts/Verify.ps1`을 통과시킨다. 테스트 수가 바뀌면 VALIDATION.md를 그 결과에 맞춘다.
 4. 소스만 커밋한다. `artifacts/`는 넣지 않는다.
@@ -83,3 +80,11 @@ gh release create vX.Y.Z --target main --title "vX.Y.Z · 제목" --notes-file n
 ```
 
 올린 뒤 `gh release view`의 ZIP digest가 로컬 SHA256과 같은지, `git ls-remote --tags origin vX.Y.Z`가 릴리스 커밋을 가리키는지 확인한다. 일반 사용자는 런타임이 포함된 `UsageMonitor-win-x64.zip`을 받고, .NET 8 Desktop Runtime이 있는 PC는 `UsageMonitor-win-x64-runtime-required.zip`을 받는다. self-contained ZIP에는 .NET 라이선스와 제3자 고지를 `licenses/`에 넣는다. Publish 스크립트가 이 복사를 한다.
+
+## 로컬 앱 업데이트
+
+수정본을 빌드하고 기존 위젯을 종료한 뒤 실제 실행 경로의 `UsageMonitor.exe`를 교체한다. 창 닫기는 위젯을 숨기므로 트레이의 종료를 사용하고 기존 프로세스가 사라졌는지 확인한다. 빌드 파일과 교체한 파일의 SHA256이 같은지 확인한다.
+
+앱을 업데이트할 때마다 시작 메뉴에 등록된 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Usage Monitor.lnk`도 함께 갱신한다. 대상은 업데이트한 `UsageMonitor.exe`, 시작 위치는 그 실행 파일의 폴더, 아이콘은 `<실행 파일 경로>,0`으로 맞추고 인수는 비워둔다. 저장한 바로가기를 다시 읽어 대상 파일이 존재하고 대상·시작 위치·아이콘·인수가 일치하는지 확인한다.
+
+갱신한 바로가기로 앱을 실행하고 새 프로세스의 실행 경로와 시작 시각을 확인한다. 수정한 문구나 동작까지 실제 화면에서 확인한 뒤 업데이트 완료로 보고한다. 화면을 확인할 수 없으면 실행 파일·프로세스·바로가기 확인 결과와 화면 미확인 사실을 구분해 보고한다.

@@ -193,11 +193,6 @@ public sealed class CodexResetNewsService
             return "리셋 티켓";
         }
 
-        if (GetString(scheduled, "scheduleConstraint") == "deadline")
-        {
-            return "리셋";
-        }
-
         return "Codex 리셋";
     }
 

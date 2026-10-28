@@ -4,7 +4,6 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using UsageMonitor.Layout;
 using UsageMonitor.Presentation;
 
 namespace UsageMonitor;
@@ -29,8 +28,6 @@ public partial class WidgetView : UserControl
         InitializeComponent();
         SetBinding(ResetNoticeVisibleProperty, new Binding(nameof(WidgetViewModel.ResetNoticeVisible)));
     }
-
-    public UsageLayoutCanvas LayoutCanvas => CustomLayoutCanvas;
 
     private static void ResetNoticeVisibilityChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
         ((WidgetView)sender).ShowResetNotice((bool)args.NewValue);

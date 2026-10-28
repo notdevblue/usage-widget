@@ -12,7 +12,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using UsageMonitor.Core;
-using UsageMonitor.Layout;
 using UsageMonitor.Services;
 
 namespace UsageMonitor.Presentation.Tests;
@@ -26,16 +25,14 @@ internal static class ProviderVisibilityTests
     {
         assertions = 0;
         SettingsControlsPublishAndSynchronize();
-        AutomaticRowsAndSettingsIntegration();
-        CustomBlocksRestoreWithoutDataLoss();
-        AccountBlocksWithoutQuotasRemainVisible();
+        ProviderRowsAndSettingsIntegration();
         Console.WriteLine($"PASS {assertions} provider visibility presentation assertions");
     }
 
     private static void SettingsControlsPublishAndSynchronize()
     {
-        var initial = new AppSettings { Theme = WidgetTheme.Mint, Scale = 1.2 };
-        var window = new SettingsWindow(initial, () => new());
+        var initial = new AppSettings { Theme = WidgetTheme.Light, Scale = 1.2 };
+        var window = new SettingsWindow(initial);
         try
         {
             var root = (FrameworkElement)window.Content;
@@ -86,21 +83,32 @@ internal static class ProviderVisibilityTests
         }
     }
 
-    private static void AutomaticRowsAndSettingsIntegration()
+    private static void ProviderRowsAndSettingsIntegration()
     {
         using var fixture = new Fixture();
         fixture.SetSnapshot("codex", Snapshot("codex") with { IsStale = true, IsCached = true, StatusDetail = "hidden-codex-warning" });
         fixture.SetSnapshot("claude", Snapshot("claude"));
         fixture.SetSnapshot("grok", Snapshot("grok"));
         fixture.Apply(fixture.Settings with { ShowCodex = false, ShowClaude = true, ShowGrok = false });
-        Check(fixture.View.Providers.Select(provider => provider.ProviderId).SequenceEqual(new[] { "claude" }), "Automatic rows must include only the selected service.");
-        Check(!fixture.View.Stale && !fixture.View.NoProvidersVisible && fixture.View.AutomaticLayoutVisible, "A hidden stale service must not mark the visible widget stale.");
+        Check(fixture.View.Providers.Select(provider => provider.ProviderId).SequenceEqual(new[] { "claude" }), "Provider rows must include only the selected service.");
+        Check(fixture.View.Providers.Single().Metrics.Count == 1, "The widget must retain every selected provider metric.");
+        Check(!fixture.View.Stale && !fixture.View.NoProvidersVisible, "A hidden stale service must not mark the visible widget stale.");
         Check(fixture.View.HoverText.Contains("Claude", StringComparison.Ordinal) && !fixture.View.HoverText.Contains("Codex", StringComparison.Ordinal)
             && !fixture.View.HoverText.Contains("Grok", StringComparison.Ordinal) && !fixture.View.HoverText.Contains("hidden-codex-warning", StringComparison.Ordinal),
             "Root hover details must omit hidden service identities, quotas, and failure details.");
         Check(fixture.TrayText.Contains("Claude", StringComparison.Ordinal) && !fixture.TrayText.Contains("Codex", StringComparison.Ordinal) && !fixture.TrayText.Contains("Grok", StringComparison.Ordinal),
             "Tray text must summarize only visible services.");
         RenderWidget(fixture.Content, "provider-visibility-claude-only.png");
+        var bar = Descendants<ProgressBar>(fixture.Content).Single();
+        var provider = fixture.View.Providers.Single();
+        Check(ToolTipText(bar) == provider.HoverText && ToolTipText(bar).Contains("Claude", StringComparison.Ordinal)
+            && !ToolTipText(bar).Contains("hidden-codex-warning", StringComparison.Ordinal),
+            "Hovering a usage bar must inherit its own provider diagnostics without hidden-provider feedback.");
+        provider.Detail = "새 연결 오류";
+        fixture.Invoke("UpdateView");
+        FlushBindings();
+        Check(ToolTipText(bar).Contains("새 연결 오류", StringComparison.Ordinal),
+            "Updated provider feedback must reach an existing usage bar's tooltip immediately.");
 
         fixture.Invoke("OpenSettings");
         var settingsWindow = GetField<Dictionary<string, SettingsWindow>>(fixture.Window, "_dialogs")["settings"];
@@ -108,8 +116,8 @@ internal static class ProviderVisibilityTests
         Named<CheckBox>(settingsRoot, "Claude 표시").IsChecked = false;
         Check(!fixture.Settings.ShowCodex && !fixture.Settings.ShowClaude && !fixture.Settings.ShowGrok && fixture.View.NoProvidersVisible,
             "Settings events must update the actual MainWindow visibility immediately.");
-        Check(fixture.View.Providers.Count == 0 && !fixture.View.CustomLayoutVisible && !fixture.View.AutomaticLayoutVisible,
-            "Turning all services off must remove both automatic and custom usage regions.");
+        Check(fixture.View.Providers.Count == 0,
+            "Turning all services off must remove provider usage rows.");
         FlushBindings();
         Arrange(fixture.Content, 190, 105);
         var empty = Descendants<TextBlock>(fixture.Content).Single(text => text.Text == "표시할 서비스 없음");
@@ -130,78 +138,26 @@ internal static class ProviderVisibilityTests
         Named<CheckBox>(settingsRoot, "Grok 표시").IsChecked = true;
         Check(fixture.Settings.ShowGrok && !fixture.View.NoProvidersVisible && fixture.View.Providers.Single().ProviderId == "grok",
             "A hidden service must restore immediately through the same live settings dialog.");
+        Check(fixture.View.Providers.Single().Metrics.Count == 1, "Re-enabling a provider must restore its usage bars immediately.");
         fixture.Invoke("ResetAppearance");
         Check(!fixture.Settings.ShowCodex && !fixture.Settings.ShowClaude && fixture.Settings.ShowGrok,
             "MainWindow appearance reset must preserve all visibility flags.");
     }
 
-    private static void CustomBlocksRestoreWithoutDataLoss()
+
+
+    private static string ToolTipText(FrameworkElement element)
     {
-        using var fixture = new Fixture();
-        fixture.SetSnapshot("codex", Snapshot("codex"));
-        fixture.SetSnapshot("claude", Snapshot("claude") with { IsStale = true, IsCached = true, StatusDetail = "hidden-claude-warning" });
-        fixture.SetSnapshot("grok", Snapshot("grok"));
-        var blocks = new List<LayoutBlock>();
-        foreach (var provider in new[] { "codex", "claude" })
-        foreach (var kind in Enum.GetValues<LayoutBlockKind>())
+        var current = element;
+        while (true)
         {
-            blocks.Add(new() { Id = provider + "-" + kind, ProviderId = provider, Kind = kind, Source = UsageWindowSource.Weekly,
-                Y = blocks.Count * 40, Width = 260, Height = 36 });
+            if (current.ToolTip is string text && text.Length > 0)
+                return text;
+            if (VisualTreeHelper.GetParent(current) is FrameworkElement parent)
+                current = parent;
+            else
+                return "";
         }
-
-        var layout = new LayoutProfile { Enabled = true, Width = 260, Height = 360, Blocks = blocks.ToArray() };
-        fixture.Apply(fixture.Settings with { Layout = layout });
-        Check(fixture.View.CustomLayoutVisible && fixture.Content.LayoutCanvas.Children.Count == 8 && fixture.View.Providers.Single().ProviderId == "grok",
-            "Custom Codex and Claude blocks must coexist with an automatic Grok row.");
-        fixture.Apply(fixture.Settings with { ShowClaude = false });
-        Check(fixture.Content.LayoutCanvas.Children.Count == 4 && fixture.View.Providers.Single().ProviderId == "grok",
-            "Hiding a custom provider must remove Usage, Reset, Account, and Status blocks together without duplicating automatic rows.");
-        Check(!fixture.View.Stale && !fixture.View.HoverText.Contains("Claude", StringComparison.Ordinal) && !fixture.View.HoverText.Contains("hidden-claude-warning", StringComparison.Ordinal)
-            && !fixture.TrayText.Contains("Claude", StringComparison.Ordinal), "Mixed custom and automatic layouts must omit all hidden stale provider feedback.");
-        Check(fixture.Settings.Layout.Blocks.SequenceEqual(layout.Blocks), "Hiding providers must preserve every saved custom block definition.");
-        var context = (LayoutContext)fixture.Invoke("BuildLayoutContext");
-        Check(context.Providers.Count == 3 && context.ResolveProvider("claude").Windows.Count == 1 && context.ResolveProvider("claude").Account.Contains("claude", StringComparison.Ordinal),
-            "The layout editor context must retain hidden provider quotas and account details.");
-        fixture.Apply(fixture.Settings with { ShowCodex = false });
-        Check(!fixture.View.CustomLayoutVisible && fixture.View.Providers.Single().ProviderId == "grok", "Hiding every custom provider must leave the visible automatic provider intact.");
-        fixture.Apply(fixture.Settings with { ShowCodex = true, ShowClaude = true });
-        Check(fixture.Content.LayoutCanvas.Children.Count == 8 && fixture.Settings.Layout.Blocks.SequenceEqual(layout.Blocks),
-            "Re-enabling providers must restore all four block kinds without changing their geometry or definitions.");
-    }
-
-    private static void AccountBlocksWithoutQuotasRemainVisible()
-    {
-        using var fixture = new Fixture();
-        fixture.SetSnapshot("codex", Snapshot("codex"));
-        fixture.SetSnapshot("claude", Snapshot("claude") with { Windows = [] });
-        var layout = new LayoutProfile
-        {
-            Enabled = true, AutoHeight = false, Height = 180,
-            Blocks =
-            [
-                new() { Id = "claude-account", ProviderId = "claude", Kind = LayoutBlockKind.Account, Height = 40 },
-                new() { Id = "claude-status", ProviderId = "claude", Kind = LayoutBlockKind.Status, Height = 40, Y = 50 }
-            ]
-        };
-        fixture.Apply(fixture.Settings with { ShowGrok = false, Layout = layout });
-        fixture.Apply(fixture.Settings with { ShowCodex = false });
-        Check(fixture.View.CustomLayoutVisible && fixture.Content.LayoutCanvas.Children.Count == 2 && fixture.View.Providers.Count == 0,
-            "A visible provider's custom account and status blocks must remain when only a hidden provider has quota windows.");
-        Check(Descendants<TextBlock>(fixture.Content.LayoutCanvas).Any(text => text.Text.Contains("claude@example.invalid", StringComparison.Ordinal)),
-            "Quota-free account blocks must retain their known account details.");
-        fixture.Apply(fixture.Settings with
-        {
-            Layout = layout with
-            {
-                Blocks =
-                [
-                    new() { ProviderId = "claude", Kind = LayoutBlockKind.Usage, Source = UsageWindowSource.Weekly },
-                    new() { ProviderId = "claude", Kind = LayoutBlockKind.Reset, Source = UsageWindowSource.Weekly, Y = 120, Height = 32 }
-                ]
-            }
-        });
-        Check(!fixture.View.CustomLayoutVisible && fixture.View.AutomaticLayoutVisible && fixture.View.Providers.Single().ProviderId == "claude",
-            "An entirely unrenderable fixed custom canvas must fall back to the visible provider's automatic status row.");
     }
 
     private static UsageSnapshot Snapshot(string providerId) => new()
